@@ -68,13 +68,27 @@ export default function KioskPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleTakeQueue = (service: string, prefix: string) => {
+  const handleTakeQueue = async (service: string, prefix: string) => {
     setIsPrinting(true);
-    
-    // Simulate high-end thermal printer processing
-    setTimeout(() => {
-      const randomNum = Math.floor(Math.random() * 30) + 1;
-      const formattedNum = `${prefix}-${String(randomNum).padStart(3, "0")}`;
+    try {
+      const response = await fetch("http://localhost:8000/api/queues/store", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify({
+          service_type: service,
+          prefix: prefix,
+        }),
+      });
+
+      const resData = await response.json();
+
+      if (!response.ok) {
+        throw new Error(resData.message || "Gagal membuat nomor antrean.");
+      }
+
       const currentTime = new Date().toLocaleTimeString("id-ID", {
         hour: "2-digit",
         minute: "2-digit",
@@ -82,12 +96,16 @@ export default function KioskPage() {
       }) + " WIB";
 
       setTicket({
-        number: formattedNum,
+        number: resData.data.ticket_number,
         service: service,
         time: currentTime,
       });
+    } catch (error: any) {
+      console.error(error);
+      alert("Koneksi Error: Gagal terhubung ke server antrean BPR.");
+    } finally {
       setIsPrinting(false);
-    }, 1500);
+    }
   };
 
   return (
