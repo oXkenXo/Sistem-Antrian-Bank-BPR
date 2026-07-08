@@ -1,0 +1,37 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class CreateQueuesTable extends Migration
+{
+    /**
+     * Run the migrations.
+     *
+     * @return void
+     */
+    public function up()
+    {
+        Schema::create('queues', function (Blueprint $table) {
+            $table->id();
+            $table->string('ticket_number');
+            $table->string('service_type');
+            $table->string('prefix');
+            $table->integer('number');
+            $table->enum('status', ['waiting', 'calling', 'completed', 'skip'])->default('waiting');
+            $table->string('counter_name')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     *
+     * @return void
+     */
+    public function down()
+    {
+        Schema::dropIfExists('queues');
+    }
+}
