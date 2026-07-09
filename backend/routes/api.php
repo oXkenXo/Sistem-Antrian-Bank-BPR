@@ -33,3 +33,7 @@ Route::apiResource('announcements', \App\Http\Controllers\AnnouncementController
 
 // BI Rate (Suku Bunga Bank Indonesia)
 Route::get('/interest-rate', [\App\Http\Controllers\InterestRateController::class, 'getRate']);
+
+// Informasi Publik (Galeri Gambar & Video YouTube untuk Display)
+Route::get('/informasi-publik/aktif', [\App\Http\Controllers\InformasiPublikController::class, 'aktif']);
+Route::apiResource('informasi-publik', \App\Http\Controllers\InformasiPublikController::class);

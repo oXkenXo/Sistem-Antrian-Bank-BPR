@@ -15,7 +15,11 @@ import {
   X,
   LogOut,
   Sparkles,
-  Info
+  Info,
+  Image as ImageIcon,
+  PlaySquare,
+  Eye,
+  EyeOff
 } from "lucide-react";
 
 interface QueueItem {
@@ -43,13 +47,15 @@ interface AnnouncementItem {
 }
 
 export default function CounterPage() {
-  // Navigation tabs: 'antrean' | 'loket' | 'informasi'
-  const [activeTab, setActiveTab] = useState<'antrean' | 'loket' | 'informasi'>('antrean');
+  // Navigation tabs: 'antrean' | 'loket' | 'informasi' | 'info-publik'
+  const [activeTab, setActiveTab] = useState<'antrean' | 'loket' | 'informasi' | 'info-publik'>('antrean');
 
   // Config state (Login loket)
   const [isConfigured, setIsConfigured] = useState(false);
-  const [counterName, setCounterName] = useState("Teller 1");
+  const [counterName, setCounterName] = useState("Kantor 01");
   const [serviceType, setServiceType] = useState("Teller");
+  
+  const isAdmin = counterName === "Kantor 01";
   
   // Queue dashboard states
   const [activeTicket, setActiveTicket] = useState<QueueItem | null>(null);
@@ -74,8 +80,32 @@ export default function CounterPage() {
   const [editingAnnounce, setEditingAnnounce] = useState<AnnouncementItem | null>(null);
   const [announceForm, setAnnounceForm] = useState({ content: "", is_active: true });
 
+  // InformasiPublik state
+  interface InformasiPublikItem {
+    id: number;
+    judul: string;
+    tipe: 'gambar' | 'youtube';
+    konten: string;
+    tanggal_berlaku: string | null;
+    tanggal_kadaluarsa: string | null;
+    is_active: boolean;
+    urutan: number;
+  }
+  const [infoPublikList, setInfoPublikList] = useState<InformasiPublikItem[]>([]);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [editingInfo, setEditingInfo] = useState<InformasiPublikItem | null>(null);
+  const [infoForm, setInfoForm] = useState({
+    judul: '',
+    tipe: 'gambar' as 'gambar' | 'youtube',
+    konten: '',
+    tanggal_berlaku: '',
+    tanggal_kadaluarsa: '',
+    is_active: true,
+    urutan: 0,
+  });
+
   // Delete Confirm Popups
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'loket' | 'informasi'; id: number } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'loket' | 'informasi' | 'info-publik'; id: number } | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -125,13 +155,63 @@ export default function CounterPage() {
   const fetchAnnouncements = async () => {
     try {
       const response = await fetch("http://localhost:8000/api/announcements");
+      if (response.ok) setAnnouncements(await response.json());
+    } catch (e) { console.error(e); }
+  };
+
+  // Fetch InformasiPublik List
+  const fetchInformasiPublik = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/informasi-publik");
+      if (response.ok) setInfoPublikList(await response.json());
+    } catch (e) { console.error(e); }
+  };
+
+  // Save InformasiPublik (add/edit)
+  const handleSaveInfoPublik = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      const url = editingInfo
+        ? `http://localhost:8000/api/informasi-publik/${editingInfo.id}`
+        : `http://localhost:8000/api/informasi-publik`;
+      const method = editingInfo ? 'PUT' : 'POST';
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          ...infoForm,
+          tanggal_berlaku: infoForm.tanggal_berlaku || null,
+          tanggal_kadaluarsa: infoForm.tanggal_kadaluarsa || null,
+        }),
+      });
       if (response.ok) {
-        const data = await response.json();
-        setAnnouncements(data);
+        setShowInfoModal(false);
+        fetchInformasiPublik();
       }
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) { console.error(e); }
+    finally { setIsLoading(false); }
+  };
+
+  // Delete InformasiPublik
+  const handleDeleteInfoPublik = async (id: number) => {
+    try {
+      await fetch(`http://localhost:8000/api/informasi-publik/${id}`, { method: 'DELETE' });
+      setDeleteConfirm(null);
+      fetchInformasiPublik();
+    } catch (e) { console.error(e); }
+  };
+
+  // Toggle active status inline
+  const handleToggleInfoActive = async (item: InformasiPublikItem) => {
+    try {
+      await fetch(`http://localhost:8000/api/informasi-publik/${item.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ ...item, is_active: !item.is_active }),
+      });
+      fetchInformasiPublik();
+    } catch (e) { console.error(e); }
   };
 
   // Call Next Ticket
@@ -371,11 +451,9 @@ export default function CounterPage() {
   // Fetch data only when switching to CRUD tabs to prevent server choking
   useEffect(() => {
     if (isConfigured) {
-      if (activeTab === 'loket') {
-        fetchCounters();
-      } else if (activeTab === 'informasi') {
-        fetchAnnouncements();
-      }
+      if (activeTab === 'loket') fetchCounters();
+      else if (activeTab === 'informasi') fetchAnnouncements();
+      else if (activeTab === 'info-publik') fetchInformasiPublik();
     }
   }, [activeTab, isConfigured]);
 
@@ -419,18 +497,21 @@ export default function CounterPage() {
                 onChange={(e) => setCounterName(e.target.value)}
                 className="border border-gray-200 bg-slate-50 text-gray-800 rounded-xl px-4 py-3 font-semibold focus:outline-none focus:ring-2 focus:ring-[#005E60] focus:bg-white transition-all shadow-sm"
               >
-                {counters.length > 0 ? (
-                  counters.map((c) => (
-                    <option key={c.id} value={c.name}>{c.name} ({c.type})</option>
-                  ))
-                ) : (
-                  <>
-                    <option value="Teller 1">Teller 1</option>
-                    <option value="Teller 2">Teller 2</option>
-                    <option value="Loket Kredit 1">Loket Kredit 1</option>
-                    <option value="Customer Service 1">Customer Service 1</option>
-                  </>
-                )}
+                <option value="Kantor 01" className="font-bold text-[#005E60]">Kantor Pusat 01 (Admin)</option>
+                <optgroup label="Daftar Loket Cabang">
+                  {counters.length > 0 ? (
+                    counters.map((c) => (
+                      <option key={c.id} value={c.name}>{c.name} ({c.type})</option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="Teller 1">Teller 1</option>
+                      <option value="Teller 2">Teller 2</option>
+                      <option value="Loket Kredit 1">Loket Kredit 1</option>
+                      <option value="Customer Service 1">Customer Service 1</option>
+                    </>
+                  )}
+                </optgroup>
               </select>
             </div>
 
@@ -487,7 +568,7 @@ export default function CounterPage() {
           </div>
 
           {/* Navigation Tabs (Wireframe: page petugas 2 - kelola informasi, kelola loket) */}
-          <div className="flex gap-2 bg-slate-100 p-1.5 rounded-2xl border border-gray-200">
+          <div className="flex gap-2 bg-slate-100 p-1.5 rounded-2xl border border-gray-200 flex-wrap">
             <button 
               onClick={() => setActiveTab('antrean')}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
@@ -498,30 +579,48 @@ export default function CounterPage() {
             >
               Panggilan Antrean
             </button>
-            <button 
-              onClick={() => setActiveTab('loket')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                activeTab === 'loket' 
-                  ? 'bg-[#005E60] text-white shadow-md' 
-                  : 'text-gray-500 hover:bg-slate-200'
-              }`}
-            >
-              Kelola Loket
-            </button>
-            <button 
-              onClick={() => setActiveTab('informasi')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                activeTab === 'informasi' 
-                  ? 'bg-[#005E60] text-white shadow-md' 
-                  : 'text-gray-500 hover:bg-slate-200'
-              }`}
-            >
-              Kelola Informasi
-            </button>
+            {isAdmin && (
+              <>
+                <button 
+                  onClick={() => setActiveTab('loket')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === 'loket' 
+                      ? 'bg-[#005E60] text-white shadow-md' 
+                      : 'text-gray-500 hover:bg-slate-200'
+                  }`}
+                >
+                  Kelola Loket
+                </button>
+                <button 
+                  onClick={() => setActiveTab('informasi')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === 'informasi' 
+                      ? 'bg-[#005E60] text-white shadow-md' 
+                      : 'text-gray-500 hover:bg-slate-200'
+                  }`}
+                >
+                  Kelola Teks Pengumuman
+                </button>
+                <button 
+                  onClick={() => setActiveTab('info-publik')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    activeTab === 'info-publik' 
+                      ? 'bg-[#00638a] text-white shadow-md' 
+                      : 'text-[#00638a] hover:bg-blue-50 border border-[#00638a]/30'
+                  }`}
+                >
+                  <ImageIcon className="w-3 h-3" />
+                  Informasi Publik Display
+                </button>
+              </>
+            )}
           </div>
 
           <button 
-            onClick={() => setIsConfigured(false)}
+            onClick={() => {
+              setIsConfigured(false);
+              setActiveTab('antrean'); // Reset tab to default for safety
+            }}
             className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-4 py-2.5 rounded-xl border border-red-200 font-bold transition-all shadow-sm"
           >
             <LogOut className="w-4 h-4" />
@@ -890,6 +989,117 @@ export default function CounterPage() {
           </div>
         )}
 
+        {/* TAB 4: Informasi Publik (Gambar & YouTube untuk Monitor Display) */}
+        {activeTab === 'info-publik' && (
+          <div className="bg-white rounded-[32px] border border-gray-200 shadow-xl p-8 flex flex-col min-h-[450px]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-6 mb-6 gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-[#364146] font-heading flex items-center gap-2">
+                  <ImageIcon className="w-5 h-5 text-[#00638a]" />
+                  Informasi Publik — Galeri Display
+                </h2>
+                <p className="text-gray-400 text-xs mt-0.5">Kelola gambar dan video YouTube yang tampil di panel kanan Monitor Display. Hanya konten aktif dan belum kadaluarsa yang ditampilkan.</p>
+              </div>
+              <button 
+                onClick={() => {
+                  setEditingInfo(null);
+                  setInfoForm({ judul: '', tipe: 'gambar', konten: '', tanggal_berlaku: '', tanggal_kadaluarsa: '', is_active: true, urutan: 0 });
+                  setShowInfoModal(true);
+                }}
+                className="bg-[#00638a] hover:bg-[#004f6e] text-white rounded-xl px-5 py-3 font-bold text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-[0.98] whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4" />
+                Tambah Konten
+              </button>
+            </div>
+
+            {infoPublikList.length === 0 ? (
+              <div className="flex-grow flex flex-col items-center justify-center text-gray-400 py-16">
+                <ImageIcon className="w-16 h-16 mb-4 text-gray-200" />
+                <p className="font-semibold">Belum ada konten informasi publik</p>
+                <p className="text-xs mt-1">Klik "Tambah Konten" untuk mulai menambahkan gambar atau video</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {infoPublikList.map((item) => {
+                  const isYoutube = item.tipe === 'youtube';
+                  const ytId = isYoutube ? item.konten.match(/(?:youtu\.be\/|embed\/|watch\?v=|&v=)([^#&?]{11})/)?.[1] : null;
+                  const thumbUrl = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : item.konten;
+
+                  return (
+                    <div key={item.id} className={`rounded-[20px] border overflow-hidden shadow-sm transition-all ${ item.is_active ? 'border-[#00638a]/30' : 'border-gray-200 opacity-60' }`}>
+                      {/* Thumbnail */}
+                      <div className="relative h-40 bg-gray-900 overflow-hidden">
+                        <img
+                          src={isYoutube ? thumbUrl! : item.konten}
+                          alt={item.judul}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x240?text=Preview'; }}
+                        />
+                        {isYoutube && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                            <div className="bg-red-600 rounded-full p-3">
+                              <PlaySquare className="w-6 h-6 text-white" />
+                            </div>
+                          </div>
+                        )}
+                        <div className={`absolute top-2 left-2 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase ${ isYoutube ? 'bg-red-600 text-white' : 'bg-[#00638a] text-white' }`}>
+                          {item.tipe}
+                        </div>
+                        <div className={`absolute top-2 right-2 text-[9px] font-bold px-2 py-0.5 rounded-full ${ item.is_active ? 'bg-emerald-500 text-white' : 'bg-gray-400 text-white' }`}>
+                          {item.is_active ? 'Aktif' : 'Nonaktif'}
+                        </div>
+                      </div>
+
+                      {/* Info */}
+                      <div className="p-4 bg-white">
+                        <p className="font-bold text-sm text-[#364146] truncate">{item.judul}</p>
+                        {item.urutan > 0 && <p className="text-[10px] text-gray-400 mt-0.5">Urutan: {item.urutan}</p>}
+                        {item.tanggal_kadaluarsa && (
+                          <p className="text-[10px] text-amber-600 mt-0.5">Exp: {item.tanggal_kadaluarsa}</p>
+                        )}
+                        <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
+                          <button
+                            onClick={() => handleToggleInfoActive(item)}
+                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${ item.is_active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200' }`}
+                          >
+                            {item.is_active ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            {item.is_active ? 'Sembunyikan' : 'Tampilkan'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingInfo(item);
+                              setInfoForm({
+                                judul: item.judul,
+                                tipe: item.tipe,
+                                konten: item.konten,
+                                tanggal_berlaku: item.tanggal_berlaku || '',
+                                tanggal_kadaluarsa: item.tanggal_kadaluarsa || '',
+                                is_active: item.is_active,
+                                urutan: item.urutan,
+                              });
+                              setShowInfoModal(true);
+                            }}
+                            className="p-1.5 hover:bg-slate-100 text-blue-500 rounded-lg border border-gray-200"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm({ type: 'info-publik', id: item.id })}
+                            className="p-1.5 hover:bg-red-50 text-red-500 rounded-lg border border-red-100"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
       </main>
 
       {/* CRUD MODAL: Counter Add/Edit (Wireframe: form tambah & form edit) */}
@@ -1007,15 +1217,143 @@ export default function CounterPage() {
         </div>
       )}
 
-      {/* POPUP DELETE CONFIRMATION (Wireframe: pop up hapus loket, pop up hapus informasi) */}
+      {/* CRUD MODAL: InformasiPublik Add/Edit */}
+      {showInfoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-[28px] max-w-lg w-full p-8 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            <button 
+              onClick={() => setShowInfoModal(false)}
+              className="absolute top-6 right-6 p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-slate-100"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-xl font-bold text-[#364146] font-heading mb-6 flex items-center gap-2">
+              <ImageIcon className="w-5 h-5 text-[#00638a]" />
+              {editingInfo ? 'Edit Konten' : 'Tambah Konten Baru'}
+            </h3>
+
+            <form onSubmit={handleSaveInfoPublik} className="flex flex-col gap-4">
+              {/* Judul */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Judul</label>
+                <input
+                  type="text"
+                  value={infoForm.judul}
+                  onChange={(e) => setInfoForm({ ...infoForm, judul: e.target.value })}
+                  placeholder="Contoh: Promo Kredit BPR Juli 2025"
+                  required
+                  className="border border-gray-200 bg-slate-50 text-gray-800 rounded-xl px-4 py-3 font-semibold focus:outline-none focus:ring-2 focus:ring-[#00638a] focus:bg-white transition-all shadow-sm text-sm"
+                />
+              </div>
+
+              {/* Tipe */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Jenis Konten</label>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setInfoForm({ ...infoForm, tipe: 'gambar' })}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-bold text-sm transition-all ${ infoForm.tipe === 'gambar' ? 'border-[#00638a] bg-[#e6f4f8] text-[#00638a]' : 'border-gray-200 text-gray-400 hover:border-gray-300' }`}
+                  >
+                    <ImageIcon className="w-4 h-4" /> Gambar (URL)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInfoForm({ ...infoForm, tipe: 'youtube' })}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-bold text-sm transition-all ${ infoForm.tipe === 'youtube' ? 'border-red-500 bg-red-50 text-red-600' : 'border-gray-200 text-gray-400 hover:border-gray-300' }`}
+                  >
+                    <PlaySquare className="w-4 h-4" /> YouTube
+                  </button>
+                </div>
+              </div>
+
+              {/* URL Konten */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                  {infoForm.tipe === 'gambar' ? 'URL Gambar' : 'URL YouTube'}
+                </label>
+                <input
+                  type="url"
+                  value={infoForm.konten}
+                  onChange={(e) => setInfoForm({ ...infoForm, konten: e.target.value })}
+                  placeholder={infoForm.tipe === 'gambar' ? 'https://example.com/gambar.jpg' : 'https://www.youtube.com/watch?v=XXXXXX'}
+                  required
+                  className="border border-gray-200 bg-slate-50 text-gray-800 rounded-xl px-4 py-3 font-semibold focus:outline-none focus:ring-2 focus:ring-[#00638a] focus:bg-white transition-all shadow-sm text-sm"
+                />
+                {infoForm.konten && infoForm.tipe === 'gambar' && (
+                  <div className="mt-2 rounded-xl overflow-hidden h-32 bg-gray-100 border border-gray-200">
+                    <img src={infoForm.konten} alt="Preview" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display='none'; }} />
+                  </div>
+                )}
+              </div>
+
+              {/* Tanggal */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Tanggal Berlaku</label>
+                  <input
+                    type="date"
+                    value={infoForm.tanggal_berlaku}
+                    onChange={(e) => setInfoForm({ ...infoForm, tanggal_berlaku: e.target.value })}
+                    className="border border-gray-200 bg-slate-50 text-gray-800 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#00638a] focus:bg-white"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Tanggal Kadaluarsa</label>
+                  <input
+                    type="date"
+                    value={infoForm.tanggal_kadaluarsa}
+                    onChange={(e) => setInfoForm({ ...infoForm, tanggal_kadaluarsa: e.target.value })}
+                    className="border border-gray-200 bg-slate-50 text-gray-800 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#00638a] focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Urutan & Aktif */}
+              <div className="flex gap-4 items-center">
+                <div className="flex flex-col gap-1 w-28">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Urutan</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={infoForm.urutan}
+                    onChange={(e) => setInfoForm({ ...infoForm, urutan: parseInt(e.target.value) || 0 })}
+                    className="border border-gray-200 bg-slate-50 text-gray-800 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#00638a]"
+                  />
+                </div>
+                <div className="flex items-center gap-3 bg-slate-50 p-4 rounded-xl border border-gray-100 flex-1 mt-4">
+                  <input 
+                    type="checkbox" 
+                    id="info_active"
+                    checked={infoForm.is_active}
+                    onChange={(e) => setInfoForm({ ...infoForm, is_active: e.target.checked })}
+                    className="w-4 h-4 text-[#00638a] focus:ring-[#00638a] border-gray-300 rounded"
+                  />
+                  <label htmlFor="info_active" className="text-xs font-bold text-[#364146]">Tampilkan di Monitor</label>
+                </div>
+              </div>
+
+              <button 
+                type="submit"
+                disabled={isLoading}
+                className="mt-2 w-full bg-[#00638a] hover:bg-[#004f6e] text-white rounded-xl py-4 font-bold transition-all active:scale-[0.98] shadow-md disabled:opacity-50"
+              >
+                {editingInfo ? 'Simpan Perubahan' : 'Tambah Konten'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP DELETE CONFIRMATION */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-[28px] max-w-sm w-full p-8 shadow-2xl text-center animate-in fade-in zoom-in-95 duration-200">
             <h4 className="text-lg font-bold text-red-600 font-heading mb-2">Hapus Data</h4>
             <p className="text-sm text-gray-500 mb-6">
-              Apakah Anda yakin ingin menghapus {deleteConfirm.type === 'loket' ? 'loket' : 'informasi'} ini? Tindakan ini tidak dapat dibatalkan.
+              Apakah Anda yakin ingin menghapus {deleteConfirm.type === 'loket' ? 'loket' : deleteConfirm.type === 'informasi' ? 'pengumuman' : 'konten informasi publik'} ini?
             </p>
-
             <div className="flex gap-4">
               <button 
                 onClick={() => setDeleteConfirm(null)}
@@ -1025,11 +1363,9 @@ export default function CounterPage() {
               </button>
               <button 
                 onClick={() => {
-                  if (deleteConfirm.type === 'loket') {
-                    handleDeleteCounter(deleteConfirm.id);
-                  } else {
-                    handleDeleteAnnounce(deleteConfirm.id);
-                  }
+                  if (deleteConfirm.type === 'loket') handleDeleteCounter(deleteConfirm.id);
+                  else if (deleteConfirm.type === 'informasi') handleDeleteAnnounce(deleteConfirm.id);
+                  else handleDeleteInfoPublik(deleteConfirm.id);
                 }}
                 className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl py-3 text-xs shadow-md"
               >
