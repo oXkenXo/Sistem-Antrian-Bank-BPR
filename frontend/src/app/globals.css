@@ -34,7 +34,16 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
+  --color-primary: #00638a;
+  --color-brand-blue: #0099D3;
+  --color-surface-container-lowest: #ffffff;
+  --color-background-subtle: #F8F9FA;
+  --color-surface: #f8f9fa;
+  --color-surface-variant: #e1e3e4;
+  --color-outline: #6e7880;
+  --color-surface-container-low: #f3f4f5;
+  --color-on-surface: #191c1d;
+  --color-on-background: #191c1d;
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);

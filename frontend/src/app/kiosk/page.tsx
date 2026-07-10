@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 
 export default function KioskPage() {
+  const [idKantor, setIdKantor] = useState<string>("01");
+  const [namaKantor, setNamaKantor] = useState<string>("");
   const [ticket, setTicket] = useState<{
     number: string;
     service: string;
@@ -24,6 +26,29 @@ export default function KioskPage() {
   const [timeString, setTimeString] = useState("");
   const [dateString, setDateString] = useState("");
   const [countdown, setCountdown] = useState(6);
+
+  // Ambil id_kantor dari query string URL
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get("id_kantor") || "01";
+      setIdKantor(id);
+
+      const fetchBranchName = async () => {
+        try {
+          const response = await fetch("http://127.0.0.1:8000/api/branches");
+          if (response.ok) {
+            const data = await response.json();
+            const current = data.find((b: any) => b.id_kantor === id);
+            if (current) setNamaKantor(current.nama_kantor);
+          }
+        } catch (e) {
+          console.warn("Gagal memuat nama cabang di Kiosk", e);
+        }
+      };
+      fetchBranchName();
+    }
+  }, []);
 
   // Auto-close and Countdown Timer when ticket is printed
   useEffect(() => {
@@ -71,13 +96,14 @@ export default function KioskPage() {
   const handleTakeQueue = async (service: string, prefix: string) => {
     setIsPrinting(true);
     try {
-      const response = await fetch("http://localhost:8000/api/queues/store", {
+      const response = await fetch("http://127.0.0.1:8000/api/queues/store", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json",
         },
         body: JSON.stringify({
+          id_kantor: idKantor, // Kirim id_kantor!
           service_type: service,
           prefix: prefix,
         }),
@@ -135,7 +161,7 @@ export default function KioskPage() {
               />
             </div>
             <span className="font-heading font-bold text-xl text-[#005E60] border-l pl-3 border-gray-200 hidden sm:inline tracking-tight">
-              Sistem Antrean
+              Sistem Antrean - {namaKantor || "Cabang BPR"}
             </span>
           </div>
 
@@ -164,6 +190,11 @@ export default function KioskPage() {
             <h1 className="font-heading text-3xl md:text-4xl font-extrabold mb-2 tracking-tight drop-shadow-md">
               Selamat Datang di BPR Kerta Raharja
             </h1>
+            {namaKantor && (
+              <h2 className="font-heading text-xl md:text-2xl font-bold text-[#ffff00] mb-3 drop-shadow-md leading-none">
+                {namaKantor}
+              </h2>
+            )}
             <p className="text-sm md:text-base text-white/80 font-light max-w-xl leading-relaxed">
               Silakan pilih layanan di bawah ini untuk mengambil nomor antrean Anda
             </p>

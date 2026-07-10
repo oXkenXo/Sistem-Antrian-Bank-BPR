@@ -17,8 +17,11 @@ class CreateCountersTable extends Migration
             $table->id();
             $table->string('name');
             $table->string('type');
+            $table->string('id_kantor'); // Terikat ke kantor cabang
             $table->boolean('is_active')->default(false);
             $table->timestamps();
+
+            $table->foreign('id_kantor')->references('id_kantor')->on('kantor')->onDelete('cascade');
         });
     }
 

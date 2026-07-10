@@ -10,19 +10,57 @@ class InformasiPublikController extends Controller
     /**
      * List semua informasi (untuk manajemen di /counter)
      */
-    public function index()
+    public function index(Request $request)
     {
-        $data = InformasiPublik::orderBy('urutan', 'asc')->orderBy('id', 'desc')->get();
+        $query = InformasiPublik::query();
+        
+        // Filter berdasarkan id_kantor jika dikirim dari frontend
+        if ($request->has('id_kantor') && $request->query('id_kantor') !== '') {
+            $query->where('id_kantor', $request->query('id_kantor'));
+        }
+
+        $data = $query->orderBy('urutan', 'asc')->orderBy('id', 'desc')->get();
         return response()->json($data);
     }
 
     /**
-     * Hanya yang aktif & belum kadaluarsa (untuk /display)
+     * Hanya yang aktif & belum kadaluarsa dengan LOGIKA FALLBACK (untuk /display)
      */
-    public function aktif()
+    public function aktif(Request $request)
     {
-        $data = InformasiPublik::aktif()->get();
-        return response()->json($data);
+        $idKantor = $request->query('id_kantor');
+
+        if (!$idKantor) {
+            // Jika tidak ada parameter cabang, tampilkan yang global saja
+            $data = InformasiPublik::aktif()->whereNull('id_kantor')->get();
+            return response()->json($data);
+        }
+
+        // Cek apakah cabang ini memiliki data sama sekali (baik aktif maupun tidak)
+        $hasBranchMedia = InformasiPublik::where('id_kantor', $idKantor)->whereIn('tipe', ['gambar', 'youtube'])->exists();
+        $hasBranchText = InformasiPublik::where('id_kantor', $idKantor)->where('tipe', 'teks_bergulir')->exists();
+
+        // Ambil konten aktif khusus cabang tersebut
+        $branchKonten = InformasiPublik::aktif()->where('id_kantor', $idKantor)->get();
+
+        // Pisahkan konten berdasarkan tipe media (iklan kanan) dan running text (teks bergulir)
+        $branchMedia = $branchKonten->whereIn('tipe', ['gambar', 'youtube']);
+        $branchText = $branchKonten->where('tipe', 'teks_bergulir');
+
+        // FALLBACK 1: Jika cabang tidak memiliki data media SAMA SEKALI di DB, gunakan iklan/media pusat (global)
+        if (!$hasBranchMedia) {
+            $branchMedia = InformasiPublik::aktif()->whereNull('id_kantor')->whereIn('tipe', ['gambar', 'youtube'])->get();
+        }
+
+        // FALLBACK 2: Jika cabang tidak memiliki data running text SAMA SEKALI di DB, gunakan running text pusat (global)
+        if (!$hasBranchText) {
+            $branchText = InformasiPublik::aktif()->whereNull('id_kantor')->where('tipe', 'teks_bergulir')->get();
+        }
+
+        // Gabungkan kembali konten media dan running text
+        $result = $branchMedia->merge($branchText)->sortBy('urutan')->values();
+
+        return response()->json($result);
     }
 
     /**
@@ -31,8 +69,9 @@ class InformasiPublikController extends Controller
     public function store(Request $request)
     {
         $request->validate([
+            'id_kantor'           => 'nullable|string|exists:kantor,id_kantor',
             'judul'               => 'required|string|max:255',
-            'tipe'                => 'required|in:gambar,youtube',
+            'tipe'                => 'required|in:gambar,youtube,teks_bergulir',
             'konten'              => 'required|string',
             'tanggal_berlaku'     => 'nullable|date',
             'tanggal_kadaluarsa'  => 'nullable|date|after_or_equal:tanggal_berlaku',
@@ -41,6 +80,7 @@ class InformasiPublikController extends Controller
         ]);
 
         $info = InformasiPublik::create([
+            'id_kantor'           => $request->id_kantor,
             'judul'               => $request->judul,
             'tipe'                => $request->tipe,
             'konten'              => $request->konten,
@@ -67,8 +107,9 @@ class InformasiPublikController extends Controller
         }
 
         $request->validate([
+            'id_kantor'           => 'nullable|string|exists:kantor,id_kantor',
             'judul'               => 'required|string|max:255',
-            'tipe'                => 'required|in:gambar,youtube',
+            'tipe'                => 'required|in:gambar,youtube,teks_bergulir',
             'konten'              => 'required|string',
             'tanggal_berlaku'     => 'nullable|date',
             'tanggal_kadaluarsa'  => 'nullable|date',
@@ -77,7 +118,7 @@ class InformasiPublikController extends Controller
         ]);
 
         $info->update($request->only([
-            'judul', 'tipe', 'konten',
+            'id_kantor', 'judul', 'tipe', 'konten',
             'tanggal_berlaku', 'tanggal_kadaluarsa',
             'is_active', 'urutan',
         ]));

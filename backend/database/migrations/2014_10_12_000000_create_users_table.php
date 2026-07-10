@@ -19,8 +19,12 @@ class CreateUsersTable extends Migration
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+            $table->string('id_kantor'); // Terikat ke kantor cabang
+            $table->enum('role', ['admin', 'petugas'])->default('petugas'); // Hak akses
             $table->rememberToken();
             $table->timestamps();
+
+            $table->foreign('id_kantor')->references('id_kantor')->on('kantor')->onDelete('cascade');
         });
     }
 

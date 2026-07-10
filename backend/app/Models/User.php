@@ -21,7 +21,14 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'id_kantor',
+        'role',
     ];
+
+    public function kantor()
+    {
+        return $this->belongsTo(Kantor::class, 'id_kantor', 'id_kantor');
+    }
 
     /**
      * The attributes that should be hidden for serialization.

@@ -16,5 +16,11 @@ class Queue extends Model
         'number',
         'status',
         'counter_name',
+        'id_kantor',
     ];
+
+    public function kantor()
+    {
+        return $this->belongsTo(Kantor::class, 'id_kantor', 'id_kantor');
+    }
 }

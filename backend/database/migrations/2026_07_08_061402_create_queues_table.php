@@ -21,7 +21,10 @@ class CreateQueuesTable extends Migration
             $table->integer('number');
             $table->enum('status', ['waiting', 'calling', 'completed', 'skip'])->default('waiting');
             $table->string('counter_name')->nullable();
+            $table->string('id_kantor'); // Terikat ke kantor cabang
             $table->timestamps();
+
+            $table->foreign('id_kantor')->references('id_kantor')->on('kantor')->onDelete('cascade');
         });
     }
 

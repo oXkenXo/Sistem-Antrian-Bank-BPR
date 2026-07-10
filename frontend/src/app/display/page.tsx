@@ -47,12 +47,21 @@ function getYoutubeId(url: string): string | null {
 }
 
 export default function DisplayPage() {
+  const [idKantor, setIdKantor] = useState<string>("01");
   const [callingQueues, setCallingQueues] = useState<QueueItem[]>([]);
   const [announcements, setAnnouncements] = useState<string[]>([]);
   const [counters, setCounters] = useState<CounterItem[]>([]);
   const [biRate, setBiRate] = useState<BiRateData | null>(null);
   const [informasiList, setInformasiList] = useState<InformasiPublikItem[]>([]);
   const [activeSlide, setActiveSlide] = useState(0);
+
+  // Ambil id_kantor dari query string URL saat halaman dimuat
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      setIdKantor(params.get("id_kantor") || "01");
+    }
+  }, []);
 
   // Audio state
   const [audioEnabled, setAudioEnabled] = useState(false);
@@ -128,12 +137,16 @@ export default function DisplayPage() {
 
   // Poll queue status + counters
   const fetchStatus = async () => {
+    if (!idKantor) return;
     try {
       const [resStatus, resCounters] = await Promise.all([
-        fetch("http://localhost:8000/api/queues/status"),
-        fetch("http://localhost:8000/api/counters")
+        fetch(`http://127.0.0.1:8000/api/queues/status?id_kantor=${idKantor}`),
+        fetch(`http://127.0.0.1:8000/api/counters?id_kantor=${idKantor}`)
       ]);
-      if (!resStatus.ok || !resCounters.ok) throw new Error("Gagal mengambil data");
+      // Abaikan error validasi (422) atau server error (5xx) secara silent
+      if (resStatus.status === 422 || resCounters.status === 422) return;
+      if (resStatus.status >= 500 || resCounters.status >= 500) return;
+      if (!resStatus.ok || !resCounters.ok) return;
 
       const data = await resStatus.json();
       const countersData = await resCounters.json();
@@ -152,17 +165,17 @@ export default function DisplayPage() {
         });
       }
     } catch (error) {
-      console.error("Error polling status:", error);
+      // Network error - server mungkin sedang restart, abaikan secara silent
     }
   };
 
   // Fetch active informasi publik
   const fetchInformasi = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/informasi-publik/aktif");
+      const res = await fetch(`http://127.0.0.1:8000/api/informasi-publik/aktif?id_kantor=${idKantor}`);
       if (res.ok) {
         const data = await res.json();
-        setInformasiList(data);
+        setInformasiList(data || []);
       }
     } catch (e) {
       console.error("Error fetching informasi publik:", e);
@@ -172,7 +185,7 @@ export default function DisplayPage() {
   // Fetch BI Rate
   const fetchBiRate = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/interest-rate");
+      const res = await fetch("http://127.0.0.1:8000/api/interest-rate");
       if (res.ok) setBiRate(await res.json());
     } catch (e) {}
   };
@@ -189,16 +202,20 @@ export default function DisplayPage() {
       clearInterval(rateInterval);
       clearInterval(infoInterval);
     };
-  }, [audioEnabled]);
+  }, [audioEnabled, idKantor]);
 
-  // Auto-slideshow for informasi publik panel
+  // Pisahkan informasi bergambar/youtube untuk slideshow di kanan
+  const mediaList = informasiList.filter(item => item.tipe === "gambar" || item.tipe === "youtube");
+  const activeInfo = mediaList[activeSlide];
+
+  // Auto-slideshow untuk informasi media
   useEffect(() => {
-    if (informasiList.length <= 1) return;
+    if (mediaList.length <= 1) return;
     const timer = setInterval(() => {
-      setActiveSlide(prev => (prev + 1) % informasiList.length);
+      setActiveSlide(prev => (prev + 1) % mediaList.length);
     }, 6000);
     return () => clearInterval(timer);
-  }, [informasiList.length]);
+  }, [mediaList.length]);
 
   // Unlock audio on first click anywhere
   useEffect(() => {
@@ -229,105 +246,147 @@ export default function DisplayPage() {
     }
   };
 
-  const activeInfo = informasiList[activeSlide];
-
   return (
-    <div className="bg-[#f8f9fa] text-[#191c1d] h-screen flex flex-col overflow-hidden font-sans relative select-none">
+    <div className="h-screen flex flex-col overflow-hidden font-sans relative select-none">
 
-      {/* ── HEADER ─────────────────────────────────────── */}
-      <header className="bg-white shadow-sm w-full top-0 z-10 shrink-0">
-        <div className="flex justify-between items-center w-full px-6 py-1.5 h-[56px]">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="bg-slate-50 p-1 rounded-xl border border-gray-100 flex items-center gap-2 shadow-sm">
+      {/* ══ PREMIUM DARK BACKGROUND ══ */}
+      <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#001a1b] via-[#003436] to-[#001214]">
+        {/* Ambient glow top-left */}
+        <div className="absolute -top-32 -left-32 w-[500px] h-[500px] bg-[#005E60]/30 rounded-full blur-[120px] pointer-events-none" />
+        {/* Ambient glow bottom-right */}
+        <div className="absolute -bottom-32 -right-32 w-[500px] h-[500px] bg-[#008285]/20 rounded-full blur-[120px] pointer-events-none" />
+        {/* Gold shimmer center */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-[#ffff00]/3 rounded-full blur-[200px] pointer-events-none" />
+      </div>
+
+      {/* ══ HEADER ══ */}
+      <header className="relative z-10 shrink-0 bg-white/95 backdrop-blur-xl shadow-2xl border-b-4 border-[#FFFF00] h-[68px] flex items-center">
+        <div className="flex justify-between items-center w-full px-8">
+
+          {/* Logo + Title */}
+          <div className="flex items-center gap-5">
+            <div className="bg-white p-2 rounded-2xl border border-gray-100 flex items-center gap-3 shadow-md">
               <img
                 alt="BPR Kerta Raharja Logo"
-                className="h-6 w-auto object-contain"
+                className="h-9 w-auto object-contain"
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuAy_PuUGIg6TcQonvnrv6ChV2tYXRE9vUggKMMgCxgxhRuXOAR7d9HS89fGozDfGiPO7VB1_XILA462zY4-y7rIBw5IZMOMqDS39L2JBtPe3M4wqKYvHrhQ2yz9GDx4h91Ej7rQhMZePA5RMX8EKLGhANiiYcCX4oUDdB8SkCXb1XitQqo69ZO5G5lkJVH12RUQfg4srNQeClopYv2Ike-yRyP-U3N1S4HA842PFSAuFRWGmig0lFIIfXDs2kOdoj01zxU"
               />
               <img
                 alt="BPR Logo"
-                className="h-6 w-auto object-contain border-l pl-2 border-gray-200"
+                className="h-9 w-auto object-contain border-l pl-3 border-gray-200"
                 src="https://lh3.googleusercontent.com/aida/AP1WRLvrPpBEMH26EO7GTocTY_KMD1TjlLHO36PMJh-oekRfNCpqp-fBJ3mM_h0WqzDjutLaXllTzKo4eGOtWKjSQoPXrO2tu-L7gxPmuowrCMXpqaOdRr68BgvdCMdcFjFuTXyZXhPWYwcbY2I4iuPkpIK_4Jvj0DZ5Ywi4Vr_sm5nVcuM3JY3qlEdaASfvVbIbsVhM79lu-tdVFjBk1Wn5xgUSEpVu2LyAsNKSHd2Vcg4e1h5NaS_uOUtOysO2"
               />
             </div>
-            <div className="text-lg font-extrabold text-[#0099D3] tracking-tight font-heading border-l pl-3 border-gray-200">
-              Display Antrean
+            <div className="border-l-2 border-gray-200 pl-5">
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-none mb-0.5">Sistem Informasi Antrean</p>
+              <span className="font-heading font-extrabold text-xl text-[#005E60] tracking-tight leading-none">
+                PT BPR Kerta Raharja
+              </span>
             </div>
           </div>
 
-          {/* Service Hour Info */}
-          <div className="flex items-center gap-2 bg-[#e6f2f2] text-[#005E60] px-3 py-1 rounded-lg font-bold text-[11px] border border-[#b2e1e3]">
-            <Clock className="w-3.5 h-3.5 animate-pulse text-[#005E60]" />
-            <span>Senin - Jumat: 08:00 - 15:00</span>
+          {/* Right: Live time badge + jam ops */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-[#e6f2f2] text-[#005E60] px-4 py-2 rounded-xl font-bold text-sm border border-[#b2e1e3]">
+              <Clock className="w-4 h-4 animate-pulse" />
+              <span>Senin – Jumat: 08.00 – 15.00 WIB</span>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* ── MAIN: 2-COLUMN LAYOUT ─────────────────────── */}
-      <main className="flex-grow flex overflow-hidden bg-gradient-to-b from-[#f3f4f5] to-[#f8f9fa] p-4 gap-4 min-h-0">
+      {/* ══ MAIN CONTENT ══ */}
+      <main className="relative z-10 flex-grow flex overflow-hidden p-5 gap-5 min-h-0">
 
-        {/* ── LEFT: Counter Cards ──────────────────────── */}
-        <div className="flex-[3] flex flex-col gap-4 min-h-0 overflow-hidden">
+        {/* ── LEFT: Counter Cards ── */}
+        <div className="flex-[3] flex flex-col gap-5 min-h-0 overflow-hidden">
           {counters.length === 0 ? (
-            <div className="flex-grow flex flex-col items-center justify-center text-[#6b767c]">
-              <div className="w-12 h-12 border-4 border-[#00638a]/20 border-t-[#00638a] rounded-full animate-spin mb-4"></div>
-              <p className="text-lg font-semibold">Memuat data loket...</p>
+            <div className="flex-grow flex flex-col items-center justify-center text-white/60">
+              <div className="w-14 h-14 border-4 border-white/10 border-t-[#FFFF00] rounded-full animate-spin mb-5" />
+              <p className="text-xl font-semibold tracking-wide">Memuat data loket...</p>
             </div>
           ) : (
             <div
-              className="grid gap-4 h-full"
-              style={{ gridTemplateColumns: `repeat(${Math.min(counters.length, 2)}, minmax(0, 1fr))`, gridTemplateRows: counters.length > 2 ? "1fr 1fr" : "1fr" }}
+              className="grid gap-5 h-full"
+              style={{
+                gridTemplateColumns: `repeat(${Math.min(counters.length, 2)}, minmax(0, 1fr))`,
+                gridTemplateRows: counters.length > 2 ? "1fr 1fr" : "1fr",
+              }}
             >
               {counters.map((c, index) => {
                 const currentCalling = callingQueues.find((q) => q.counter_name === c.name);
-                const shimmerDelay = `${index * 0.5}s`;
+                const shimmerDelay = `${index * 0.7}s`;
 
                 if (currentCalling) {
+                  // ── ACTIVE CARD ──
                   return (
                     <div
                       key={c.name}
-                      className="bg-white rounded-xl shadow-lg flex flex-col overflow-hidden border border-gray-100 min-h-0"
-                      style={{ boxShadow: "0 10px 25px -5px rgba(0,153,211,0.12)" }}
+                      className="rounded-[28px] overflow-hidden flex flex-col min-h-0 shadow-2xl border border-white/20"
+                      style={{ boxShadow: "0 0 60px -10px rgba(0,94,96,0.6), 0 25px 50px -12px rgba(0,0,0,0.5)" }}
                     >
-                      <div className="bg-[#00638a] py-4 px-4 text-center border-b-[6px] border-[#FFFF00] relative overflow-hidden shrink-0">
+                      {/* Card header */}
+                      <div className="bg-gradient-to-r from-[#005E60] to-[#007a7c] px-6 py-4 text-center border-b-[6px] border-[#FFFF00] relative overflow-hidden shrink-0">
                         <div
-                          className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full animate-[shimmer_3s_infinite]"
+                          className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full animate-[shimmer_3.5s_ease-in-out_infinite]"
                           style={{ animationDelay: shimmerDelay }}
-                        ></div>
-                        <h2 className="text-xl font-extrabold text-white m-0 relative z-10 font-heading">{c.name}</h2>
+                        />
+                        <h2 className="text-2xl font-extrabold text-white relative z-10 font-heading tracking-wide drop-shadow-sm">
+                          {c.name}
+                        </h2>
                       </div>
-                      <div className="flex-grow flex flex-col items-center justify-center p-6 bg-white relative">
-                        <div className="absolute top-3 right-3">
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-pulse"></span>
+
+                      {/* Card body */}
+                      <div className="flex-grow flex flex-col items-center justify-center bg-white relative overflow-hidden">
+                        {/* Subtle radial glow behind number */}
+                        <div className="absolute inset-0 bg-gradient-to-b from-[#e6f2f2]/60 to-white pointer-events-none" />
+
+                        {/* Status badge */}
+                        <div className="absolute top-4 right-4">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-500 text-white shadow-lg shadow-emerald-200">
+                            <span className="w-2 h-2 rounded-full bg-white animate-ping" />
                             Melayani
                           </span>
                         </div>
-                        <div className="text-[#6b767c] text-[10px] font-bold mb-2 tracking-widest uppercase">Nomor Antrean</div>
-                        <div className="text-[clamp(48px,8vw,80px)] leading-none font-bold text-[#0099D3] tracking-tighter font-mono whitespace-nowrap">
+
+                        <p className="text-[#9aacae] text-[11px] font-extrabold tracking-[0.25em] uppercase mb-3 relative z-10">
+                          Nomor Antrean
+                        </p>
+                        <div
+                          className="font-mono font-black text-[#005E60] tracking-tighter leading-none relative z-10"
+                          style={{ fontSize: "clamp(64px, 10vw, 112px)" }}
+                        >
                           {currentCalling.ticket_number}
                         </div>
                       </div>
                     </div>
                   );
                 } else {
+                  // ── IDLE CARD ──
                   return (
                     <div
                       key={c.name}
-                      className="bg-[#f8f9fa] rounded-xl shadow-md flex flex-col overflow-hidden opacity-80 grayscale-[20%] border border-gray-200 min-h-0"
+                      className="rounded-[28px] overflow-hidden flex flex-col min-h-0 bg-white/5 backdrop-blur-sm border border-white/10 shadow-xl"
                     >
-                      <div className="bg-[#00638a] py-4 px-4 text-center border-b-[6px] border-[#e1e3e4] shrink-0">
-                        <h2 className="text-xl font-extrabold text-white m-0 font-heading">{c.name}</h2>
+                      {/* Card header kosong */}
+                      <div className="bg-white/10 px-6 py-4 text-center border-b-[6px] border-white/10 shrink-0">
+                        <h2 className="text-2xl font-extrabold text-white/80 font-heading tracking-wide">{c.name}</h2>
                       </div>
-                      <div className="flex-grow flex flex-col items-center justify-center p-6 bg-[#f3f4f5] relative">
-                        <div className="absolute top-3 right-3">
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-[#e1e3e4] text-[#3e484f] border border-[#bec8d1]">
+
+                      {/* Card body kosong */}
+                      <div className="flex-grow flex flex-col items-center justify-center relative">
+                        <div className="absolute top-4 right-4">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-white/10 text-white/40 border border-white/10">
                             Kosong
                           </span>
                         </div>
-                        <div className="text-[#6b767c] text-[10px] font-bold mb-2 tracking-widest uppercase">Nomor Antrean</div>
-                        <div className="text-[clamp(48px,8vw,80px)] leading-none font-bold text-[#e1e3e4] tracking-tighter font-mono whitespace-nowrap">
+                        <p className="text-white/25 text-[11px] font-extrabold tracking-[0.25em] uppercase mb-3">
+                          Nomor Antrean
+                        </p>
+                        <div
+                          className="font-mono font-black text-white/15 tracking-tighter leading-none"
+                          style={{ fontSize: "clamp(64px, 10vw, 112px)" }}
+                        >
                           ---
                         </div>
                       </div>
@@ -339,31 +398,36 @@ export default function DisplayPage() {
           )}
         </div>
 
-        {/* ── RIGHT: Informasi Publik Panel ──────────── */}
-        <div className="flex-[2] bg-white rounded-xl shadow-lg border border-gray-100 flex flex-col overflow-hidden min-h-0">
+        {/* ── RIGHT: Informasi Publik Panel ── */}
+        <div className="flex-[2] rounded-[28px] overflow-hidden flex flex-col min-h-0 shadow-2xl border border-white/20 bg-white/5 backdrop-blur-sm">
 
           {/* Panel header */}
-          <div className="bg-[#00638a] px-5 py-3 flex items-center gap-2 shrink-0 border-b-[4px] border-[#FFFF00]">
-            <ImageIcon className="w-4 h-4 text-[#FFFF00]" />
-            <span className="text-white font-bold text-sm tracking-wide uppercase">Informasi BPR</span>
+          <div className="bg-gradient-to-r from-[#005E60] to-[#007a7c] px-6 py-4 flex items-center gap-3 shrink-0 border-b-[6px] border-[#FFFF00]">
+            <div className="w-8 h-8 bg-[#FFFF00]/20 rounded-xl flex items-center justify-center">
+              <ImageIcon className="w-4 h-4 text-[#FFFF00]" />
+            </div>
+            <div>
+              <p className="text-[9px] text-white/50 font-bold uppercase tracking-widest leading-none">Layanan Nasabah</p>
+              <span className="text-white font-extrabold text-sm tracking-wide uppercase leading-tight">Informasi BPR</span>
+            </div>
           </div>
 
           {/* Slide content */}
-          {informasiList.length === 0 ? (
-            <div className="flex-grow flex flex-col items-center justify-center text-[#6b767c] p-8 text-center">
-              <ImageIcon className="w-16 h-16 mb-4 text-gray-300" />
-              <p className="font-semibold text-lg">Belum ada informasi publik</p>
-              <p className="text-sm mt-2 opacity-60">Tambahkan gambar atau video di panel petugas</p>
+          {mediaList.length === 0 ? (
+            <div className="flex-grow flex flex-col items-center justify-center text-white/40 p-8 text-center">
+              <div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mb-5">
+                <ImageIcon className="w-10 h-10" />
+              </div>
+              <p className="font-bold text-lg text-white/50">Belum ada informasi publik</p>
+              <p className="text-sm mt-2 text-white/30">Tambahkan gambar atau video di panel petugas</p>
             </div>
           ) : (
             <div className="flex-grow flex flex-col relative overflow-hidden min-h-0">
-              {/* Slide */}
-              {informasiList.map((info, idx) => (
+              {mediaList.map((info, idx) => (
                 <div
                   key={info.id}
-                  className={`absolute inset-0 flex flex-col transition-opacity duration-700 ${idx === activeSlide ? "opacity-100 z-10" : "opacity-0 z-0"}`}
+                  className={`absolute inset-0 flex flex-col transition-opacity duration-1000 ${idx === activeSlide ? "opacity-100 z-10" : "opacity-0 z-0"}`}
                 >
-                  {/* Media */}
                   <div className="flex-grow bg-black overflow-hidden min-h-0">
                     {info.tipe === "gambar" ? (
                       <img
@@ -385,28 +449,26 @@ export default function DisplayPage() {
                     )}
                   </div>
 
-                  {/* Judul bar */}
-                  <div className="bg-gradient-to-r from-[#00638a] to-[#00638a]/80 px-5 py-3 shrink-0">
-                    <div className="flex items-center gap-2">
-                      {info.tipe === "youtube" ? (
-                        <PlaySquare className="w-4 h-4 text-red-400 flex-shrink-0" />
-                      ) : (
-                        <ImageIcon className="w-4 h-4 text-[#FFFF00] flex-shrink-0" />
-                      )}
-                      <p className="text-white font-semibold text-sm truncate">{info.judul}</p>
-                    </div>
+                  {/* Judul bar dengan gradient overlay */}
+                  <div className="bg-gradient-to-r from-[#005E60]/95 to-[#008285]/80 backdrop-blur-sm px-5 py-3 shrink-0 flex items-center gap-2.5">
+                    {info.tipe === "youtube" ? (
+                      <PlaySquare className="w-4 h-4 text-red-400 flex-shrink-0" />
+                    ) : (
+                      <ImageIcon className="w-4 h-4 text-[#FFFF00] flex-shrink-0" />
+                    )}
+                    <p className="text-white font-semibold text-sm truncate">{info.judul}</p>
                   </div>
                 </div>
               ))}
 
-              {/* Slide dots indicator */}
-              {informasiList.length > 1 && (
+              {/* Slide dots */}
+              {mediaList.length > 1 && (
                 <div className="absolute bottom-14 left-0 right-0 flex justify-center gap-2 z-20">
-                  {informasiList.map((_, idx) => (
+                  {mediaList.map((_, idx) => (
                     <button
                       key={idx}
                       onClick={() => setActiveSlide(idx)}
-                      className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${idx === activeSlide ? "bg-[#FFFF00] scale-125" : "bg-white/50"}`}
+                      className={`rounded-full transition-all duration-300 ${idx === activeSlide ? "w-5 h-2.5 bg-[#FFFF00]" : "w-2.5 h-2.5 bg-white/30"}`}
                     />
                   ))}
                 </div>
@@ -416,71 +478,77 @@ export default function DisplayPage() {
         </div>
       </main>
 
-      {/* ── MARQUEE FOOTER ─────────────────────────────── */}
-      <footer className="bg-[#00638a] text-white h-[70px] shrink-0 flex items-center overflow-hidden border-t-4 border-[#FFFF00] relative z-20">
-        <div className="bg-[#364146] text-[#FFFF00] font-bold text-xl h-full flex items-center px-6 z-10 shadow-lg tracking-wide uppercase whitespace-nowrap min-w-[180px] justify-center border-r border-[#00638a]/20">
-          <Megaphone className="w-5 h-5 mr-2 flex-shrink-0" />
+      {/* ══ MARQUEE FOOTER ══ */}
+      <footer className="relative z-10 shrink-0 h-[62px] flex items-center overflow-hidden border-t-[5px] border-[#FFFF00]"
+        style={{ background: "linear-gradient(90deg, #002a2b 0%, #003d3f 40%, #002a2b 100%)" }}
+      >
+        {/* Label kiri */}
+        <div className="bg-gradient-to-br from-[#005E60] to-[#003436] text-[#FFFF00] font-extrabold text-sm h-full flex items-center px-7 shrink-0 gap-2.5 border-r-2 border-[#FFFF00]/30 min-w-[160px] justify-center tracking-widest uppercase shadow-lg">
+          <Megaphone className="w-4.5 h-4.5 flex-shrink-0" />
           <span>Info BPR</span>
         </div>
 
-        <div className="overflow-hidden flex-grow h-full flex items-center bg-[#00638a] relative">
-          <div className="animate-marquee whitespace-nowrap flex items-center text-[22px] font-semibold text-white">
+        {/* Scrolling text */}
+        <div className="overflow-hidden flex-grow h-full flex items-center relative">
+          <div className="animate-marquee whitespace-nowrap inline-flex items-center text-[19px] font-semibold text-white/95 gap-0">
             {biRate && (
               <>
-                <span className="mx-6 text-[#FFFF00] text-xl">◆</span>
-                <span className="flex items-center gap-3">
-                  <span className="bg-[#FFFF00] text-[#00638a] font-black text-xs px-2.5 py-0.5 rounded-full uppercase tracking-wider">BI Rate</span>
-                  <span className="font-bold">{biRate.bi_rate_str}</span>
-                  <span className="text-white/70 text-base">per {biRate.period}</span>
+                <span className="mx-10 text-[#FFFF00]/80 text-lg">◆</span>
+                <span className="inline-flex items-center gap-3">
+                  <span className="bg-[#FFFF00] text-[#003436] font-black text-[11px] px-3 py-0.5 rounded-full uppercase tracking-widest">BI Rate</span>
+                  <span className="font-extrabold text-[#FFFF00]">{biRate.bi_rate_str}</span>
+                  <span className="text-white/50 text-base">per {biRate.period}</span>
                 </span>
               </>
             )}
-
-            {announcements.length > 0 ? (
-              announcements.map((text, idx) => (
-                <span key={idx} className="flex items-center">
-                  <span className="mx-6 text-[#FFFF00] text-xl">◆</span>
-                  {text}
-                </span>
-              ))
-            ) : (
-              <>
-                <span className="mx-6 text-[#FFFF00] text-xl">◆</span>
-                Selamat Datang di Bank BPR Kerta Raharja. Silakan ambil nomor antrean Anda.
-                <span className="mx-6 text-[#FFFF00] text-xl">◆</span>
-                Budayakan mengantre demi ketertiban bersama di lingkungan Bank.
-              </>
-            )}
-
-            {/* Duplicate for seamless loop */}
+            {(announcements.length > 0 ? announcements : [
+              "Selamat Datang di Bank BPR Kerta Raharja. Silakan ambil nomor antrean Anda.",
+              "Budayakan mengantre demi ketertiban bersama di lingkungan Bank.",
+            ]).map((text, idx) => (
+              <span key={idx} className="inline-flex items-center">
+                <span className="mx-10 text-[#FFFF00]/80 text-lg">◆</span>
+                {text}
+              </span>
+            ))}
+            {/* Seamless loop duplicate */}
             {biRate && (
               <>
-                <span className="mx-6 text-[#FFFF00] text-xl">◆</span>
-                <span className="flex items-center gap-3">
-                  <span className="bg-[#FFFF00] text-[#00638a] font-black text-xs px-2.5 py-0.5 rounded-full uppercase tracking-wider">BI Rate</span>
-                  <span className="font-bold">{biRate.bi_rate_str}</span>
-                  <span className="text-white/70 text-base">per {biRate.period}</span>
+                <span className="mx-10 text-[#FFFF00]/80 text-lg">◆</span>
+                <span className="inline-flex items-center gap-3">
+                  <span className="bg-[#FFFF00] text-[#003436] font-black text-[11px] px-3 py-0.5 rounded-full uppercase tracking-widest">BI Rate</span>
+                  <span className="font-extrabold text-[#FFFF00]">{biRate.bi_rate_str}</span>
+                  <span className="text-white/50 text-base">per {biRate.period}</span>
                 </span>
               </>
             )}
+            {(announcements.length > 0 ? announcements : [
+              "Selamat Datang di Bank BPR Kerta Raharja. Silakan ambil nomor antrean Anda.",
+              "Budayakan mengantre demi ketertiban bersama di lingkungan Bank.",
+            ]).map((text, idx) => (
+              <span key={`d-${idx}`} className="inline-flex items-center">
+                <span className="mx-10 text-[#FFFF00]/80 text-lg">◆</span>
+                {text}
+              </span>
+            ))}
           </div>
         </div>
       </footer>
 
-      {/* Animations */}
+      {/* ══ GLOBAL ANIMATIONS ══ */}
       <style jsx global>{`
         @keyframes shimmer {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
+          0%   { transform: translateX(-100%); }
+          100% { transform: translateX(250%); }
         }
         @keyframes marquee {
-          0% { transform: translateX(100%); }
-          100% { transform: translateX(-100%); }
+          0%   { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
         }
         .animate-marquee {
-          animation: marquee 25s linear infinite;
+          animation: marquee 70s linear infinite;
         }
       `}</style>
+
     </div>
   );
 }

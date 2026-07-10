@@ -10,14 +10,17 @@ class CreateInformasiPublikTable extends Migration
     {
         Schema::create('informasi_publik', function (Blueprint $table) {
             $table->id();
+            $table->string('id_kantor')->nullable(); // Nullable untuk konten default dari pusat
             $table->string('judul');
-            $table->enum('tipe', ['gambar', 'youtube'])->default('gambar');
-            $table->text('konten'); // URL gambar atau YouTube embed URL
+            $table->enum('tipe', ['gambar', 'youtube', 'teks_bergulir'])->default('gambar');
+            $table->text('konten'); // URL gambar, YouTube embed URL, atau isi teks bergulir
             $table->date('tanggal_berlaku')->nullable();
             $table->date('tanggal_kadaluarsa')->nullable();
             $table->boolean('is_active')->default(true);
             $table->integer('urutan')->default(0); // Urutan tampil
             $table->timestamps();
+
+            $table->foreign('id_kantor')->references('id_kantor')->on('kantor')->onDelete('cascade');
         });
     }
 

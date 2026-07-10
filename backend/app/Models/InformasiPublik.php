@@ -13,6 +13,7 @@ class InformasiPublik extends Model
     protected $table = 'informasi_publik';
 
     protected $fillable = [
+        'id_kantor',
         'judul',
         'tipe',
         'konten',
@@ -21,6 +22,11 @@ class InformasiPublik extends Model
         'is_active',
         'urutan',
     ];
+
+    public function kantor()
+    {
+        return $this->belongsTo(Kantor::class, 'id_kantor', 'id_kantor');
+    }
 
     protected $casts = [
         'tanggal_berlaku'    => 'date',
