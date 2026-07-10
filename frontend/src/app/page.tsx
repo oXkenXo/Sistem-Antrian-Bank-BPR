@@ -17,13 +17,7 @@ import {
   Eye,
   EyeOff
 } from "lucide-react";
-
-interface Branch {
-  id_kantor: string;
-  nama_kantor: string;
-  alamat: string | null;
-  gambar_kantor: string | null;
-}
+import { branchApi, authApi, Branch } from "@/lib/api";
 
 // Fallback jika backend belum terhubung/migrasi belum selesai
 const defaultBranches: Branch[] = [
@@ -64,11 +58,33 @@ export default function PortalPage() {
   useEffect(() => {
     const fetchBranches = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/branches");
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.length > 0) {
-            setBranches(data);
+        const data = await branchApi.list();
+        if (data && data.length > 0) {
+          setBranches(data);
+          // Jika ada parameter services=open, auto-pilih cabang yang sesuai
+          if (typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            const services = params.get("services");
+            const idKantor = params.get("id_kantor");
+            if (services === "open" && idKantor) {
+              const branch = data.find((b) => b.id_kantor === idKantor);
+              if (branch) {
+                // Cek sessionStorage untuk user yang sudah login
+                const stored = sessionStorage.getItem(`user_${idKantor}`);
+                if (stored) {
+                  try {
+                    const u = JSON.parse(stored);
+                    if (u.role === 'admin' || u.id_kantor === idKantor) {
+                      setLoggedInUser(u);
+                      setSelectedBranch(branch);
+                      setLoginStep("services");
+                    }
+                  } catch (e) {
+                    console.error("Gagal membaca session", e);
+                  }
+                }
+              }
+            }
           }
         }
       } catch (e) {
@@ -96,24 +112,11 @@ export default function PortalPage() {
     if (!selectedBranch) return;
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          email: email,
-          password: password,
-          id_kantor: selectedBranch.id_kantor,
-        }),
+      const resData = await authApi.login({
+        email: email,
+        password: password,
+        id_kantor: selectedBranch.id_kantor,
       });
-
-      const resData = await response.json();
-
-      if (!response.ok) {
-        throw new Error(resData.message || "Gagal masuk layanan cabang.");
-      }
 
       // Simpan user info ke sessionStorage dengan key spesifik cabang
       sessionStorage.setItem(`user_${selectedBranch.id_kantor}`, JSON.stringify(resData.user));

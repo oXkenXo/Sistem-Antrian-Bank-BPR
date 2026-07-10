@@ -1,6 +1,7 @@
-"use client";
-
-import { useState, useEffect } from "react";
+"use client";import { 
+  useState, useEffect 
+} from "react";
+import Link from "next/link";
 import { 
   Users, 
   Layers, 
@@ -19,31 +20,28 @@ import {
   Image as ImageIcon,
   PlaySquare,
   Eye,
-  EyeOff
+  EyeOff,
+  ArrowLeft,
+  ShieldCheck,
+  Wifi,
+  Clock
 } from "lucide-react";
-
-interface QueueItem {
-  id: number;
-  ticket_number: string;
-  service_type: string;
-  prefix: string;
-  number: number;
-  status: string;
-  counter_name: string | null;
-  updated_at: string;
-}
-
-interface CounterItem {
-  id: number;
-  name: string;
-  type: string;
-  is_active: boolean;
-}
+import { 
+  branchApi, 
+  queueApi, 
+  counterApi, 
+  informasiApi,
+  authApi,
+  QueueItem, 
+  CounterItem,
+  InformasiPublikItem
+} from "@/lib/api";
 
 interface AnnouncementItem {
   id: number;
   content: string;
   is_active: boolean;
+  id_kantor?: string;
 }
 
 export default function CounterPage() {
@@ -72,13 +70,10 @@ export default function CounterPage() {
 
       const fetchBranchName = async () => {
         try {
-          const response = await fetch("http://127.0.0.1:8000/api/branches");
-          if (response.ok) {
-            const data = await response.json();
-            setAllBranches(data);
-            const current = data.find((b: any) => b.id_kantor === id);
-            if (current) setNamaKantor(current.nama_kantor);
-          }
+          const data = await branchApi.list();
+          setAllBranches(data);
+          const current = data.find((b: any) => b.id_kantor === id);
+          if (current) setNamaKantor(current.nama_kantor);
         } catch (e) {
           console.warn("Gagal memuat nama cabang di Counter", e);
         }
@@ -104,7 +99,7 @@ export default function CounterPage() {
   // Modals state
   const [showCounterModal, setShowCounterModal] = useState(false);
   const [editingCounter, setEditingCounter] = useState<CounterItem | null>(null);
-  const [counterForm, setCounterForm] = useState({ name: "", type: "Teller", is_active: true });
+  const [counterForm, setCounterForm] = useState({ name: "", type: "Teller", is_active: true, id_kantor: "" });
 
   const [showAnnounceModal, setShowAnnounceModal] = useState(false);
   const [editingAnnounce, setEditingAnnounce] = useState<any | null>(null);
@@ -112,18 +107,6 @@ export default function CounterPage() {
   const [allBranches, setAllBranches] = useState<any[]>([]);
   const [showPassword, setShowPassword] = useState(false);
 
-  // InformasiPublik state
-  interface InformasiPublikItem {
-    id: number;
-    judul: string;
-    tipe: 'gambar' | 'youtube' | 'teks_bergulir';
-    konten: string;
-    tanggal_berlaku: string | null;
-    tanggal_kadaluarsa: string | null;
-    is_active: boolean;
-    urutan: number;
-    id_kantor: string | null;
-  }
   const [infoPublikList, setInfoPublikList] = useState<InformasiPublikItem[]>([]);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [editingInfo, setEditingInfo] = useState<InformasiPublikItem | null>(null);
@@ -146,14 +129,9 @@ export default function CounterPage() {
 
   // Fetch all queues, stats, counters, and announcements
   const fetchStatus = async () => {
-    // Jangan fetch jika id_kantor belum siap
     if (!idKantor) return;
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/queues/status?id_kantor=${idKantor}`);
-      // Abaikan error validasi (422) atau server error (5xx) secara silent
-      if (response.status === 422 || response.status >= 500) return;
-      if (!response.ok) return;
-      const data = await response.json();
+      const data = await queueApi.status(idKantor);
       
       setWaitingList(data.waiting || []);
       setStats(data.stats || {
@@ -163,7 +141,6 @@ export default function CounterPage() {
         cs_waiting: 0,
       });
 
-      // Synchronize currently calling ticket for this counter
       if (data.calling && data.calling.length > 0) {
         const myActive = data.calling.find((q: QueueItem) => q.counter_name === counterName);
         setActiveTicket(myActive || null);
@@ -171,101 +148,86 @@ export default function CounterPage() {
         setActiveTicket(null);
       }
     } catch (error) {
-      // Network error - server mungkin sedang restart, abaikan secara silent
+      // silently ignore network errors
     }
   };
 
   // Fetch Counters List for CRUD
   const fetchCounters = async () => {
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/counters?id_kantor=${idKantor}`);
-      if (response.ok) {
-        const data = await response.json();
-        setCounters(data);
-      }
+      const data = await counterApi.list(idKantor);
+      setCounters(data);
     } catch (e) {
       console.error(e);
     }
   };
 
-  // Fetch Announcements List (Teks Bergulir)
+  // Fetch Announcements List
   const fetchAnnouncements = async () => {
     try {
-      const url = (loggedInUser?.role === 'admin' && idKantor === '01')
-        ? `http://127.0.0.1:8000/api/informasi-publik`
-        : `http://127.0.0.1:8000/api/informasi-publik?id_kantor=${idKantor}`;
-      
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        const texts = data
-          .filter((item: any) => item.tipe === 'teks_bergulir')
-          .map((item: any) => ({
-            id: item.id,
-            content: item.konten,
-            is_active: item.is_active,
-            id_kantor: item.id_kantor
-          }));
-        setAnnouncements(texts);
-      }
+      const data = await informasiApi.list(
+        (loggedInUser?.role === 'admin' && idKantor === '01') ? undefined : idKantor
+      );
+      const texts = data
+        .filter((item) => item.tipe === 'teks_bergulir')
+        .map((item) => ({
+          id: item.id,
+          content: item.konten,
+          is_active: item.is_active,
+          id_kantor: item.id_kantor ?? undefined,
+        }));
+      setAnnouncements(texts);
     } catch (e) { console.error(e); }
   };
 
-  // Fetch InformasiPublik List (Media Gambar/Youtube)
+  // Fetch InformasiPublik List
   const fetchInformasiPublik = async () => {
     try {
-      const url = (loggedInUser?.role === 'admin' && idKantor === '01')
-        ? `http://127.0.0.1:8000/api/informasi-publik`
-        : `http://127.0.0.1:8000/api/informasi-publik?id_kantor=${idKantor}`;
-
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        const mediaList = data.filter((item: any) => item.tipe === 'gambar' || item.tipe === 'youtube');
-        setInfoPublikList(mediaList);
-      }
+      const data = await informasiApi.list(
+        (loggedInUser?.role === 'admin' && idKantor === '01') ? undefined : idKantor
+      );
+      const mediaList = data.filter((item) => item.tipe === 'gambar' || item.tipe === 'youtube');
+      setInfoPublikList(mediaList);
     } catch (e) { console.error(e); }
   };
 
-  // Save InformasiPublik (add/edit)
+  // Save InformasiPublik
   const handleSaveInfoPublik = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const url = editingInfo
-        ? `http://127.0.0.1:8000/api/informasi-publik/${editingInfo.id}`
-        : `http://127.0.0.1:8000/api/informasi-publik`;
-      const method = editingInfo ? 'PUT' : 'POST';
-
       const targetIdKantor = (loggedInUser?.role === 'admin' && idKantor === "01")
         ? (infoForm.id_kantor || null)
         : idKantor;
 
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({
+      if (editingInfo) {
+        await informasiApi.update(editingInfo.id, {
           ...infoForm,
           id_kantor: targetIdKantor,
           tanggal_berlaku: infoForm.tanggal_berlaku || null,
           tanggal_kadaluarsa: infoForm.tanggal_kadaluarsa || null,
-        }),
-      });
-      if (response.ok) {
-        setShowInfoModal(false);
-        fetchInformasiPublik();
+        });
+      } else {
+        await informasiApi.create({
+          ...infoForm,
+          id_kantor: targetIdKantor,
+          tanggal_berlaku: infoForm.tanggal_berlaku || null,
+          tanggal_kadaluarsa: infoForm.tanggal_kadaluarsa || null,
+        });
       }
+      setShowInfoModal(false);
+      fetchInformasiPublik();
     } catch (e) { console.error(e); }
     finally { setIsLoading(false); }
   };
 
-  // Delete InformasiPublik (Optimistic Update)
+  // Delete InformasiPublik
   const handleDeleteInfoPublik = async (id: number) => {
     const previousList = [...infoPublikList];
     setInfoPublikList(prev => prev.filter(i => i.id !== id));
     setDeleteConfirm(null);
     try {
-      await fetch(`http://127.0.0.1:8000/api/informasi-publik/${id}`, { method: 'DELETE' });
+      await informasiApi.delete(id);
       fetchInformasiPublik();
     } catch (e) { 
       console.error(e); 
@@ -273,24 +235,20 @@ export default function CounterPage() {
     }
   };
 
-  // Toggle active status inline (Optimistic Update)
+  // Toggle active status inline
   const handleToggleInfoActive = async (item: InformasiPublikItem) => {
     const previousList = [...infoPublikList];
     setInfoPublikList(prev => prev.map(i => i.id === item.id ? { ...i, is_active: !i.is_active } : i));
     try {
-      await fetch(`http://127.0.0.1:8000/api/informasi-publik/${item.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({
-          judul: item.judul,
-          tipe: item.tipe,
-          konten: item.konten,
-          tanggal_berlaku: item.tanggal_berlaku,
-          tanggal_kadaluarsa: item.tanggal_kadaluarsa,
-          is_active: !item.is_active,
-          urutan: item.urutan,
-          id_kantor: item.id_kantor
-        }),
+      await informasiApi.update(item.id, {
+        judul: item.judul,
+        tipe: item.tipe,
+        konten: item.konten,
+        tanggal_berlaku: item.tanggal_berlaku,
+        tanggal_kadaluarsa: item.tanggal_kadaluarsa,
+        is_active: !item.is_active,
+        urutan: item.urutan,
+        id_kantor: item.id_kantor
       });
       fetchInformasiPublik();
     } catch (e) { 
@@ -304,25 +262,11 @@ export default function CounterPage() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/queues/call-next", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          id_kantor: idKantor, // Kirim id_kantor cabang
-          counter_name: counterName,
-          service_type: serviceType,
-        }),
+      const resData = await queueApi.callNext({
+        id_kantor: idKantor,
+        counter_name: counterName,
+        service_type: serviceType,
       });
-
-      const resData = await response.json();
-
-      if (!response.ok) {
-        throw new Error(resData.message || "Gagal memanggil antrean berikutnya.");
-      }
-
       setActiveTicket(resData.data);
       fetchStatus();
     } catch (error: any) {
@@ -337,20 +281,7 @@ export default function CounterPage() {
     if (!activeTicket) return;
     setIsLoading(true);
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/queues/recall", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          queue_id: activeTicket.id,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Gagal memanggil ulang antrean.");
-      }
+      await queueApi.recall(activeTicket.id);
     } catch (error: any) {
       alert(error.message);
     } finally {
@@ -363,21 +294,9 @@ export default function CounterPage() {
     if (!activeTicket) return;
     setIsLoading(true);
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/queues/complete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          queue_id: activeTicket.id,
-        }),
-      });
-
-      if (response.ok) {
-        setActiveTicket(null);
-        fetchStatus();
-      }
+      await queueApi.complete(activeTicket.id);
+      setActiveTicket(null);
+      fetchStatus();
     } catch (error: any) {
       alert(error.message);
     } finally {
@@ -390,21 +309,9 @@ export default function CounterPage() {
     if (!activeTicket) return;
     setIsLoading(true);
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/queues/skip", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          queue_id: activeTicket.id,
-        }),
-      });
-
-      if (response.ok) {
-        setActiveTicket(null);
-        fetchStatus();
-      }
+      await queueApi.skip(activeTicket.id);
+      setActiveTicket(null);
+      fetchStatus();
     } catch (error: any) {
       alert(error.message);
     } finally {
@@ -417,20 +324,9 @@ export default function CounterPage() {
     if (!confirm("Apakah Anda yakin ingin mereset seluruh antrean hari ini? Semua nomor antrean akan dihapus.")) return;
     setIsLoading(true);
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/queues/reset", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          id_kantor: idKantor, // Kirim id_kantor cabang
-        }),
-      });
-      if (response.ok) {
-        setActiveTicket(null);
-        fetchStatus();
-      }
+      await queueApi.reset(idKantor);
+      setActiveTicket(null);
+      fetchStatus();
     } catch (e) {
       console.error(e);
     } finally {
@@ -442,46 +338,41 @@ export default function CounterPage() {
   const handleSaveCounter = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    const url = editingCounter 
-      ? `http://127.0.0.1:8000/api/counters/${editingCounter.id}` 
-      : "http://127.0.0.1:8000/api/counters";
-    const method = editingCounter ? "PUT" : "POST";
+
+    const targetIdKantor = isAdmin && counterForm.id_kantor 
+      ? counterForm.id_kantor 
+      : idKantor;
 
     try {
-      const response = await fetch(url, {
-        method: method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      if (editingCounter) {
+        await counterApi.update(editingCounter.id, {
           ...counterForm,
-          id_kantor: idKantor, // Kirim id_kantor cabang
-        }),
-      });
-
-      if (response.ok) {
-        setShowCounterModal(false);
-        setEditingCounter(null);
-        setCounterForm({ name: "", type: "Teller", is_active: true });
-        fetchCounters();
+          id_kantor: targetIdKantor,
+        });
       } else {
-        const err = await response.json();
-        alert(err.message || "Gagal menyimpan loket.");
+        await counterApi.create({
+          ...counterForm,
+          id_kantor: targetIdKantor,
+        });
       }
-    } catch (e) {
-      console.error(e);
+      setShowCounterModal(false);
+      setEditingCounter(null);
+      setCounterForm({ name: "", type: "Teller", is_active: true, id_kantor: "" });
+      fetchCounters();
+    } catch (e: any) {
+      alert(e.message || "Gagal menyimpan loket.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // CRUD - Delete Counter (Optimistic Update)
+  // CRUD - Delete Counter
   const handleDeleteCounter = async (id: number) => {
     const previousCounters = [...counters];
     setCounters(prev => prev.filter(c => c.id !== id));
     setDeleteConfirm(null);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/counters/${id}`, {
-        method: "DELETE",
-      });
+      await counterApi.delete(id);
       fetchCounters();
     } catch (e) {
       console.error(e);
@@ -489,58 +380,55 @@ export default function CounterPage() {
     }
   };
 
-  // CRUD - Save Announcement (Disimpan ke informasi-publik dengan tipe teks_bergulir)
+  // CRUD - Save Announcement
   const handleSaveAnnounce = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    const url = editingAnnounce 
-      ? `http://127.0.0.1:8000/api/informasi-publik/${editingAnnounce.id}` 
-      : "http://127.0.0.1:8000/api/informasi-publik";
-    const method = editingAnnounce ? "PUT" : "POST";
 
     const targetIdKantor = (loggedInUser?.role === 'admin' && idKantor === "01")
       ? (announceForm.id_kantor || null)
       : idKantor;
 
     try {
-      const response = await fetch(url, {
-        method: method,
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify({
+      if (editingAnnounce) {
+        await informasiApi.update(editingAnnounce.id, {
           id_kantor: targetIdKantor,
-          judul: editingAnnounce ? `Running Text ${editingAnnounce.id}` : 'Running Text Baru',
+          judul: `Running Text ${editingAnnounce.id}`,
           tipe: 'teks_bergulir',
           konten: announceForm.content,
           is_active: announceForm.is_active,
           urutan: 0
-        }),
-      });
-
-      if (response.ok) {
-        setShowAnnounceModal(false);
-        setEditingAnnounce(null);
-        setAnnounceForm({ content: "", is_active: true, id_kantor: "" });
-        fetchAnnouncements();
+        });
       } else {
-        const err = await response.json();
-        alert(err.message || "Gagal menyimpan pengumuman.");
+        await informasiApi.create({
+          id_kantor: targetIdKantor,
+          judul: 'Running Text Baru',
+          tipe: 'teks_bergulir',
+          konten: announceForm.content,
+          is_active: announceForm.is_active,
+          urutan: 0,
+          tanggal_berlaku: null,
+          tanggal_kadaluarsa: null,
+        });
       }
-    } catch (e) {
-      console.error(e);
+      setShowAnnounceModal(false);
+      setEditingAnnounce(null);
+      setAnnounceForm({ content: "", is_active: true, id_kantor: "" });
+      fetchAnnouncements();
+    } catch (e: any) {
+      alert(e.message || "Gagal menyimpan pengumuman.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // CRUD - Delete Announcement (Optimistic Update)
+  // CRUD - Delete Announcement
   const handleDeleteAnnounce = async (id: number) => {
     const previousAnnouncements = [...announcements];
     setAnnouncements(prev => prev.filter(a => a.id !== id));
     setDeleteConfirm(null);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/informasi-publik/${id}`, {
-        method: "DELETE",
-      });
+      await informasiApi.delete(id);
       fetchAnnouncements();
     } catch (e) {
       console.error(e);
@@ -613,25 +501,11 @@ export default function CounterPage() {
     setErrorMessage(null);
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          email: email,
-          password: password,
-          id_kantor: idKantor,
-        }),
+      const resData = await authApi.login({
+        email: email,
+        password: password,
+        id_kantor: idKantor,
       });
-
-      const resData = await response.json();
-
-      if (!response.ok) {
-        throw new Error(resData.message || "Gagal masuk ke panel loket.");
-      }
-
       setLoggedInUser(resData.user);
       setIsConfigured(true);
     } catch (error: any) {
@@ -644,17 +518,27 @@ export default function CounterPage() {
   // Login/Config Screen (Wireframe: page petugas)
   if (!isConfigured) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#00383a] via-[#005E60] to-[#002f31] p-6">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#00383a] via-[#005E60] to-[#002f31] p-6 relative">
+        
+        {/* Tombol Kembali ke Pemilihan Menu Layanan */}
+        <Link
+          href={`/?services=open&id_kantor=${idKantor}`}
+          className="absolute top-6 left-6 z-20 bg-white/10 backdrop-blur-md hover:bg-white/20 text-white border border-white/20 rounded-2xl px-4 py-2.5 flex items-center gap-2 transition-all duration-200 font-bold text-xs group"
+        >
+          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+          Kembali ke Menu Layanan
+        </Link>
+
         <form 
           onSubmit={handleLoginSubmit}
           className="bg-white rounded-[32px] w-full max-w-md p-8 md:p-10 shadow-2xl border border-gray-100 flex flex-col relative overflow-hidden animate-in fade-in zoom-in-95 duration-300"
         >
           
           {/* Top Logo Banner */}
-          <div className="flex items-center gap-3 justify-center mb-8 border-b pb-6">
+          <div className="flex items-center gap-3 justify-center mb-6 border-b pb-5">
             <img 
               alt="BPR Kerta Raharja Logo" 
-              className="h-10 w-auto object-contain" 
+              className="h-9 w-auto object-contain" 
               src="https://lh3.googleusercontent.com/aida-public/AB6AXuAy_PuUGIg6TcQonvnrv6ChV2tYXRE9vUggKMMgCxgxhRuXOAR7d9HS89fGozDfGiPO7VB1_XILA462zY4-y7rIBw5IZMOMqDS39L2JBtPe3M4wqKYvHrhQ2yz9GDx4h91Ej7rQhMZePA5RMX8EKLGhANiiYcCX4oUDdB8SkCXb1XitQqo69ZO5G5lkJVH12RUQfg4srNQeClopYv2Ike-yRyP-U3N1S4HA842PFSAuFRWGmig0lFIIfXDs2kOdoj01zxU"
             />
             <span className="font-heading font-extrabold text-xl text-[#005E60] border-l pl-3 border-gray-200">
@@ -662,11 +546,11 @@ export default function CounterPage() {
             </span>
           </div>
 
-          <h2 className="text-2xl font-bold text-[#364146] mb-2 font-heading flex items-center gap-2">
-            <Settings className="w-6 h-6 text-[#005E60]" />
-            Masuk Loket
+          <h2 className="text-xl font-bold text-[#364146] mb-1 font-heading flex items-center gap-2">
+            <Settings className="w-5 h-5 text-[#005E60]" />
+            Masuk Panel Loket
           </h2>
-          <p className="text-gray-500 text-xs mb-6 leading-relaxed">
+          <p className="text-gray-500 text-xs mb-5 leading-relaxed">
             {loggedInUser ? (
               <span>Anda telah terautentikasi. Silakan pilih nomor loket & jenis kategori pelayanan Anda hari ini.</span>
             ) : (
@@ -749,38 +633,37 @@ export default function CounterPage() {
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Pilih Nomor Loket</label>
               <select 
                 value={counterName}
-                onChange={(e) => setCounterName(e.target.value)}
+                onChange={(e) => {
+                  const selectedName = e.target.value;
+                  setCounterName(selectedName);
+                  // Otomatis set kategori pelayanan berdasarkan tipe loket yang dipilih
+                  const selected = counters.find(c => c.name === selectedName);
+                  if (selected) {
+                    setServiceType(selected.type);
+                  }
+                }}
                 className="border border-gray-200 bg-slate-50 text-gray-800 rounded-xl px-4 py-3 font-semibold focus:outline-none focus:ring-2 focus:ring-[#005E60] focus:bg-white transition-all shadow-sm"
               >
                 <optgroup label="Daftar Loket Cabang">
                   {counters.length > 0 ? (
                     counters.map((c) => (
-                      <option key={c.id} value={c.name}>{c.name}</option>
+                      <option key={c.id} value={c.name}>{c.name} — {c.type}</option>
                     ))
                   ) : (
                     <>
-                      <option value="Teller 1">Teller 1</option>
-                      <option value="Teller 2">Teller 2</option>
-                      <option value="Customer Service 1">Customer Service 1</option>
+                      {[
+                        { name: 'Teller 1', type: 'Teller' },
+                        { name: 'Teller 2', type: 'Teller' },
+                        { name: 'Customer Service 1', type: 'Customer Service' },
+                      ].map(fb => (
+                        <option key={fb.name} value={fb.name}>{fb.name} — {fb.type}</option>
+                      ))}
                     </>
                   )}
                 </optgroup>
               </select>
             </div>
 
-            {/* Service Type Selection */}
-            <div className="flex flex-col gap-1.5 text-left">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Kategori Pelayanan</label>
-              <select 
-                value={serviceType}
-                onChange={(e) => setServiceType(e.target.value)}
-                className="border border-gray-200 bg-slate-50 text-gray-800 rounded-xl px-4 py-3 font-semibold focus:outline-none focus:ring-2 focus:ring-[#005E60] focus:bg-white transition-all shadow-sm"
-              >
-                <option value="Teller">Teller (Prefix A)</option>
-                <option value="Kredit">Kredit (Prefix B)</option>
-                <option value="Customer Service">Customer Service (Prefix C)</option>
-              </select>
-            </div>
 
             {/* Submit Button */}
             <button 
@@ -836,18 +719,21 @@ export default function CounterPage() {
             >
               Panggilan Antrean
             </button>
+            {/* Semua petugas (dan admin) bisa akses Kelola Loket */}
+            <button 
+              onClick={() => setActiveTab('loket')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'loket' 
+                  ? 'bg-[#005E60] text-white shadow-md' 
+                  : 'text-gray-500 hover:bg-slate-200'
+              }`}
+            >
+              Kelola Loket
+            </button>
+
+            {/* Hanya admin yang bisa kelola pengumuman & informasi publik */}
             {isAdmin && (
               <>
-                <button 
-                  onClick={() => setActiveTab('loket')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                    activeTab === 'loket' 
-                      ? 'bg-[#005E60] text-white shadow-md' 
-                      : 'text-gray-500 hover:bg-slate-200'
-                  }`}
-                >
-                  Kelola Loket
-                </button>
                 <button 
                   onClick={() => setActiveTab('informasi')}
                   className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
@@ -889,128 +775,161 @@ export default function CounterPage() {
       {/* Main Content Area */}
       <main className="flex-grow max-w-[1440px] mx-auto w-full p-6 md:p-8 flex flex-col gap-6">
 
-        {/* TAB 1: Antrean Loket Calling Screen (Wireframe: page petugas 3) */}
+        {/* TAB 1: Antrean Loket Calling Screen */}
         {activeTab === 'antrean' && (
           <div className="flex flex-col lg:flex-row gap-6">
             
             {/* Calling Desk Console */}
             <div className="w-full lg:w-2/3 flex flex-col gap-6">
-              <div className="bg-white rounded-[28px] border border-gray-200 shadow-xl p-8 flex flex-col justify-between min-h-[350px] relative overflow-hidden">
-                <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-[#005E60] to-[#008285]"></div>
+              
+              {/* Main Calling Card */}
+              <div className="bg-white rounded-[28px] border border-gray-200 shadow-xl flex flex-col min-h-[400px] relative overflow-hidden">
+                {/* Premium top accent */}
+                <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#005E60] via-[#008285] to-[#00a3a6]"></div>
                 
-                {/* Header */}
-                <div className="flex justify-between items-center border-b pb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 bg-green-500 rounded-full animate-ping"></span>
-                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Status Loket: Aktif</span>
+                {/* Console Header */}
+                <div className="px-8 pt-6 pb-4 flex justify-between items-center border-b border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-3 h-3 rounded-full ${activeTicket ? 'bg-emerald-500 animate-ping' : 'bg-gray-300'} shadow-sm`}></div>
+                    <div>
+                      <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block leading-none">
+                        Status Loket
+                      </span>
+                      <span className={`text-sm font-extrabold ${activeTicket ? 'text-emerald-600' : 'text-gray-500'}`}>
+                        {activeTicket ? 'Sedang Melayani' : 'Siap Menunggu'}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-xs font-bold text-[#005E60] bg-[#e6f2f2] px-3 py-1 rounded-full border border-[#b2e1e3]">
-                    {serviceType} Desk
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-lg bg-[#e6f2f2] flex items-center justify-center">
+                      <Wifi className={`w-4 h-4 ${counterName ? 'text-green-600' : 'text-gray-300'}`} />
+                    </div>
+                    <span className="text-[11px] font-bold text-[#005E60] bg-[#e6f2f2] px-3 py-1.5 rounded-lg border border-[#b2e1e3]">
+                      {counterName}
+                    </span>
+                    <span className="text-[11px] font-bold text-white bg-[#005E60] px-3 py-1.5 rounded-lg">
+                      {serviceType}
+                    </span>
                   </div>
                 </div>
 
-                {/* Big Number Now (Wireframe: nomor sekarang) */}
-                <div className="flex-grow flex flex-col justify-center items-center py-6 text-center">
+                {/* Big Calling Number */}
+                <div className="flex-grow flex flex-col justify-center items-center py-8 text-center relative overflow-hidden">
+                  {/* Background decorative circle */}
+                  <div className="absolute -top-20 -right-20 w-64 h-64 bg-[#005E60]/[0.03] rounded-full pointer-events-none"></div>
+                  <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-[#008285]/[0.03] rounded-full pointer-events-none"></div>
+
                   {activeTicket ? (
-                    <div className="animate-in zoom-in-95 duration-200">
-                      <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-widest block mb-1">Nomor Sekarang</span>
-                      <div className="text-7xl md:text-8xl font-mono font-extrabold text-[#005E60] tracking-tight drop-shadow-sm mb-4 leading-none animate-pulse">
+                    <div className="animate-in zoom-in-95 duration-300 relative z-10">
+                      <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-4 py-1.5 rounded-full mb-4">
+                        <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></span>
+                        <span className="text-[10px] font-extrabold text-emerald-700 uppercase tracking-widest">Sedang Dipanggil</span>
+                      </div>
+                      <div className="text-8xl md:text-9xl font-mono font-black text-[#005E60] tracking-tight drop-shadow-sm mb-3 leading-none">
                         {activeTicket.ticket_number}
                       </div>
-                      <div className="text-xs text-gray-400 font-medium">
-                        Mulai Dilayani: {new Date(activeTicket.updated_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WIB
+                      <div className="flex items-center justify-center gap-4 text-xs text-gray-400">
+                        <span className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5" />
+                          Mulai: {new Date(activeTicket.updated_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WIB
+                        </span>
                       </div>
                     </div>
                   ) : (
-                    <div className="text-gray-400">
-                      <span className="text-6xl font-mono font-extrabold block mb-2">---</span>
-                      <span className="text-xs tracking-wider uppercase font-bold">Tidak Ada Antrean Aktif</span>
-                      <p className="text-xs max-w-[250px] mx-auto text-gray-400 mt-1 leading-relaxed">
-                        Klik tombol "Panggil Berikutnya" di bawah untuk memanggil antrean pertama.
+                    <div className="relative z-10">
+                      <div className="w-20 h-20 bg-gray-50 rounded-3xl flex items-center justify-center mx-auto mb-5 border-2 border-dashed border-gray-200">
+                        <Users className="w-8 h-8 text-gray-300" />
+                      </div>
+                      <p className="text-5xl font-mono font-black text-gray-200 mb-2">---</p>
+                      <p className="text-sm font-bold text-gray-400 mb-1">Tidak Ada Antrean Aktif</p>
+                      <p className="text-xs text-gray-400 max-w-[240px] mx-auto leading-relaxed">
+                        Klik <strong>"Panggil Berikutnya"</strong> untuk memanggil antrean pertama
                       </p>
                     </div>
                   )}
                 </div>
 
                 {errorMessage && (
-                  <div className="bg-red-50 text-red-600 border border-red-200 text-xs font-semibold rounded-xl p-3 text-center mb-4">
+                  <div className="mx-8 mb-4 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl px-4 py-3 flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
                     {errorMessage}
                   </div>
                 )}
 
-                {/* Counter Actions (Wireframe: panggil ulang, skip nomor, selesai pelayanan, reset antrian) */}
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 border-t pt-6">
-                  
-                  {/* Call Next */}
-                  <button 
-                    onClick={handleCallNext}
-                    disabled={isLoading}
-                    className="bg-gradient-to-r from-[#005E60] to-[#008285] hover:from-[#004a4c] hover:to-[#005E60] text-white rounded-xl py-4 font-bold flex flex-col items-center justify-center gap-1.5 shadow-md active:scale-[0.98] transition-all border-b-4 border-[#00383a] disabled:opacity-50"
-                  >
-                    <PhoneCall className="w-5 h-5" />
-                    <span className="text-xs">Panggil Berikut</span>
-                  </button>
+                {/* Action Buttons */}
+                <div className="px-8 pb-6 pt-4 border-t border-gray-100">
+                  <div className="grid grid-cols-5 gap-2.5">
+                    {/* Call Next */}
+                    <button 
+                      onClick={handleCallNext}
+                      disabled={isLoading}
+                      className="bg-gradient-to-br from-[#005E60] to-[#008285] hover:from-[#004a4c] hover:to-[#005E60] text-white rounded-2xl py-4 font-bold flex flex-col items-center justify-center gap-1.5 shadow-lg shadow-[#005E60]/20 active:scale-[0.97] transition-all disabled:opacity-50"
+                    >
+                      <PhoneCall className="w-5 h-5" />
+                      <span className="text-[10px]">Panggil</span>
+                      <span className="text-[9px] opacity-70">Berikutnya</span>
+                    </button>
 
-                  {/* Recall (Panggil Ulang) */}
-                  <button 
-                    onClick={handleRecall}
-                    disabled={isLoading || !activeTicket}
-                    className="bg-white hover:bg-slate-50 border border-gray-250 text-gray-700 rounded-xl py-4 font-bold flex flex-col items-center justify-center gap-1.5 shadow-sm active:scale-[0.98] transition-all disabled:opacity-40"
-                  >
-                    <RefreshCw className="w-5 h-5 text-gray-500" />
-                    <span className="text-xs">Panggil Ulang</span>
-                  </button>
+                    {/* Recall */}
+                    <button 
+                      onClick={handleRecall}
+                      disabled={isLoading || !activeTicket}
+                      className="bg-white hover:bg-slate-50 border-2 border-gray-200 hover:border-gray-300 text-gray-700 rounded-2xl py-4 font-bold flex flex-col items-center justify-center gap-1.5 shadow-sm active:scale-[0.97] transition-all disabled:opacity-30"
+                    >
+                      <RefreshCw className="w-5 h-5 text-gray-500" />
+                      <span className="text-[10px]">Panggil</span>
+                      <span className="text-[9px] opacity-70">Ulang</span>
+                    </button>
 
-                  {/* Skip (Skip Nomor) */}
-                  <button 
-                    onClick={handleSkip}
-                    disabled={isLoading || !activeTicket}
-                    className="bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-600 rounded-xl py-4 font-bold flex flex-col items-center justify-center gap-1.5 shadow-sm active:scale-[0.98] transition-all disabled:opacity-40"
-                  >
-                    <SkipForward className="w-5 h-5" />
-                    <span className="text-xs">Skip Nomor</span>
-                  </button>
+                    {/* Skip */}
+                    <button 
+                      onClick={handleSkip}
+                      disabled={isLoading || !activeTicket}
+                      className="bg-amber-50 hover:bg-amber-100 border-2 border-amber-200 hover:border-amber-300 text-amber-700 rounded-2xl py-4 font-bold flex flex-col items-center justify-center gap-1.5 shadow-sm active:scale-[0.97] transition-all disabled:opacity-30"
+                    >
+                      <SkipForward className="w-5 h-5" />
+                      <span className="text-[10px]">Skip</span>
+                      <span className="text-[9px] opacity-70">Nomor</span>
+                    </button>
 
-                  {/* Complete (Selesai Pelayanan) */}
-                  <button 
-                    onClick={handleComplete}
-                    disabled={isLoading || !activeTicket}
-                    className="bg-green-600 hover:bg-green-700 text-white rounded-xl py-4 font-bold flex flex-col items-center justify-center gap-1.5 shadow-md active:scale-[0.98] transition-all disabled:opacity-40 border-b-4 border-green-800"
-                  >
-                    <Check className="w-5 h-5" />
-                    <span className="text-xs">Selesai Layanan</span>
-                  </button>
+                    {/* Complete */}
+                    <button 
+                      onClick={handleComplete}
+                      disabled={isLoading || !activeTicket}
+                      className="bg-gradient-to-br from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-2xl py-4 font-bold flex flex-col items-center justify-center gap-1.5 shadow-lg active:scale-[0.97] transition-all disabled:opacity-50"
+                    >
+                      <Check className="w-5 h-5" />
+                      <span className="text-[10px]">Selesai</span>
+                      <span className="text-[9px] opacity-70">Layanan</span>
+                    </button>
 
-                  {/* Reset (Reset Antrian) */}
-                  <button 
-                    onClick={handleResetQueues}
-                    disabled={isLoading}
-                    className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 rounded-xl py-4 font-bold flex flex-col items-center justify-center gap-1.5 shadow-sm active:scale-[0.98] transition-all col-span-2 lg:col-span-1"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                    <span className="text-xs">Reset Antrean</span>
-                  </button>
+                    {/* Reset */}
+                    <button 
+                      onClick={handleResetQueues}
+                      disabled={isLoading}
+                      className="bg-red-50 hover:bg-red-100 border-2 border-red-200 hover:border-red-300 text-red-600 rounded-2xl py-4 font-bold flex flex-col items-center justify-center gap-1.5 shadow-sm active:scale-[0.97] transition-all"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                      <span className="text-[10px]">Reset</span>
+                      <span className="text-[9px] opacity-70">Antrean</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Statistics Grid */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white border border-gray-250 shadow-sm p-4 rounded-2xl flex flex-col justify-center items-center text-center">
-                  <span className="text-[10px] uppercase font-bold text-gray-400">Total Menunggu</span>
-                  <span className="text-2xl font-extrabold font-mono text-[#005E60] mt-0.5">{stats.total_waiting}</span>
-                </div>
-                <div className="bg-white border border-gray-250 shadow-sm p-4 rounded-2xl flex flex-col justify-center items-center text-center">
-                  <span className="text-[10px] uppercase font-bold text-gray-400">Menunggu Teller</span>
-                  <span className="text-2xl font-extrabold font-mono text-[#364146] mt-0.5">{stats.teller_waiting}</span>
-                </div>
-                <div className="bg-white border border-gray-250 shadow-sm p-4 rounded-2xl flex flex-col justify-center items-center text-center">
-                  <span className="text-[10px] uppercase font-bold text-gray-400">Menunggu Kredit</span>
-                  <span className="text-2xl font-extrabold font-mono text-[#364146] mt-0.5">{stats.kredit_waiting}</span>
-                </div>
-                <div className="bg-white border border-gray-250 shadow-sm p-4 rounded-2xl flex flex-col justify-center items-center text-center">
-                  <span className="text-[10px] uppercase font-bold text-gray-400">Menunggu CS</span>
-                  <span className="text-2xl font-extrabold font-mono text-[#364146] mt-0.5">{stats.cs_waiting}</span>
-                </div>
+              {/* Enhanced Statistics Cards */}
+              <div className="grid grid-cols-4 gap-4">
+                {[
+                  { label: 'Total Menunggu', value: stats.total_waiting, color: 'from-[#005E60] to-[#008285]', textColor: 'text-white' },
+                  { label: 'Teller (A)', value: stats.teller_waiting, color: 'from-blue-500 to-blue-600', textColor: 'text-white' },
+                  { label: 'Kredit (B)', value: stats.kredit_waiting, color: 'from-amber-500 to-amber-600', textColor: 'text-white' },
+                  { label: 'CS (C)', value: stats.cs_waiting, color: 'from-purple-500 to-purple-600', textColor: 'text-white' },
+                ].map((stat) => (
+                  <div key={stat.label} className={`bg-gradient-to-br ${stat.color} rounded-2xl p-4 shadow-lg flex flex-col justify-center items-center text-center`}>
+                    <span className="text-[9px] uppercase font-bold opacity-75 tracking-wider">{stat.label}</span>
+                    <span className={`text-3xl font-black font-mono mt-0.5 ${stat.textColor}`}>{stat.value}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -1018,27 +937,27 @@ export default function CounterPage() {
             <div className="w-full lg:w-1/3 flex flex-col">
               <div className="bg-white rounded-[28px] border border-gray-100 shadow-2xl flex-grow flex flex-col overflow-hidden min-h-[400px]">
                 
-                {/* Sidebar Header Gradient */}
-                <div className="bg-gradient-to-br from-[#005E60] to-[#008285] px-6 py-4 flex items-center justify-between rounded-t-[28px]">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
-                      <Layers className="w-4 h-4 text-white" />
+                {/* Sidebar Premium Header */}
+                <div className="bg-gradient-to-br from-[#005E60] to-[#008285] px-6 py-5 flex items-center justify-between rounded-t-[28px]">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                      <Layers className="w-4.5 h-4.5 text-white" />
                     </div>
                     <div>
-                      <p className="text-[9px] text-white/60 font-bold uppercase tracking-widest leading-none">Daftar Tunggu</p>
-                      <h4 className="font-heading font-extrabold text-white text-sm leading-tight">
-                        Antrean {serviceType}
+                      <p className="text-[9px] text-white/50 font-bold uppercase tracking-[0.15em] leading-none">Antrean</p>
+                      <h4 className="font-heading font-extrabold text-white text-sm leading-tight mt-0.5">
+                        {serviceType}
                       </h4>
                     </div>
                   </div>
-                  <div className="flex flex-col items-center justify-center bg-white/20 backdrop-blur-sm border border-white/30 rounded-2xl px-3 py-1.5 min-w-[52px] text-center">
-                    <span className="text-2xl font-mono font-extrabold text-white leading-none">{serviceWaitingList.length}</span>
-                    <span className="text-[8px] text-white/70 font-bold uppercase tracking-wider">Tiket</span>
+                  <div className="flex flex-col items-center justify-center bg-white/20 backdrop-blur-sm border border-white/20 rounded-2xl px-4 py-2 min-w-[56px] text-center">
+                    <span className="text-2xl font-mono font-black text-white leading-none">{serviceWaitingList.length}</span>
+                    <span className="text-[8px] text-white/60 font-bold uppercase tracking-wider">Tiket</span>
                   </div>
                 </div>
 
                 {/* Ticket List */}
-                <div className="flex-grow overflow-y-auto p-4 flex flex-col gap-2.5 max-h-[60vh]
+                <div className="flex-grow overflow-y-auto p-4 flex flex-col gap-2 max-h-[55vh]
                   [&::-webkit-scrollbar]:w-1.5
                   [&::-webkit-scrollbar-track]:bg-gray-50
                   [&::-webkit-scrollbar-thumb]:bg-gray-200
@@ -1047,22 +966,22 @@ export default function CounterPage() {
                     serviceWaitingList.map((item, index) => (
                       <div
                         key={item.id}
-                        className={`flex items-center justify-between rounded-2xl p-3.5 transition-all duration-300 ${
+                        className={`flex items-center justify-between rounded-2xl p-3.5 transition-all duration-200 hover:shadow-md ${
                           index === 0
-                            ? "bg-gradient-to-r from-[#005E60]/10 to-[#008285]/5 border-2 border-[#005E60]/25 shadow-sm"
+                            ? "bg-gradient-to-r from-[#005E60]/8 to-[#008285]/5 border-2 border-[#005E60]/20 shadow-sm"
                             : index === 1
-                            ? "bg-blue-50/60 border border-blue-100"
+                            ? "bg-sky-50/70 border border-sky-200/60"
                             : "bg-slate-50/70 border border-gray-100"
                         }`}
                       >
-                        {/* Position number + ticket */}
+                        {/* Position + Ticket */}
                         <div className="flex items-center gap-3">
                           {/* Position Badge */}
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-mono font-extrabold text-sm shadow-md flex-shrink-0 ${
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-mono font-extrabold text-sm flex-shrink-0 shadow-sm ${
                             index === 0
-                              ? "bg-gradient-to-br from-[#005E60] to-[#008285] text-white"
+                              ? "bg-gradient-to-br from-[#005E60] to-[#008285] text-white shadow-[#005E60]/30"
                               : index === 1
-                              ? "bg-blue-500 text-white"
+                              ? "bg-sky-500 text-white"
                               : "bg-white border-2 border-gray-200 text-gray-400"
                           }`}>
                             {index + 1}
@@ -1074,34 +993,29 @@ export default function CounterPage() {
                             }`}>
                               {item.ticket_number}
                             </div>
-                            <span className="text-[9px] text-gray-400 font-semibold uppercase mt-0.5 block">
-                              Daftar: {new Date(item.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WIB
+                            <span className="text-[9px] text-gray-400 font-semibold mt-0.5 block">
+                              {new Date(item.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WIB
                             </span>
                           </div>
                         </div>
 
-                        {/* Badge status */}
+                        {/* Badge */}
                         {index === 0 && (
                           <span className="text-[9px] bg-gradient-to-r from-[#005E60] to-[#008285] text-white font-bold px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-sm animate-pulse">
                             <Sparkles className="w-2.5 h-2.5" />
-                            Berikutnya
-                          </span>
-                        )}
-                        {index === 1 && (
-                          <span className="text-[9px] bg-blue-100 border border-blue-200 text-blue-600 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1">
-                            #2
+                            Sekarang
                           </span>
                         )}
                       </div>
                     ))
                   ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-center py-16 text-gray-400">
-                      <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                        <Layers className="w-8 h-8 text-gray-300" />
+                    <div className="flex-grow flex flex-col items-center justify-center text-center py-16 text-gray-400">
+                      <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border-2 border-dashed border-gray-200">
+                        <Layers className="w-7 h-7 text-gray-300" />
                       </div>
                       <span className="text-sm font-bold text-gray-400 block mb-1">Antrean Kosong</span>
-                      <p className="text-xs max-w-[180px] leading-relaxed text-gray-400">
-                        Belum ada tiket menunggu untuk layanan {serviceType}.
+                      <p className="text-[11px] text-gray-400 max-w-[180px] leading-relaxed">
+                        Belum ada tiket untuk {serviceType}
                       </p>
                     </div>
                   )}
@@ -1112,170 +1026,271 @@ export default function CounterPage() {
           </div>
         )}
 
-        {/* TAB 2: Kelola Loket (Wireframe: page kelola loket) */}
+        {/* TAB 2: Kelola Loket */}
         {activeTab === 'loket' && (
-          <div className="bg-white rounded-[32px] border border-gray-200 shadow-xl p-8 flex flex-col min-h-[450px]">
+          <div className="bg-white rounded-[32px] border border-gray-200 shadow-xl flex flex-col min-h-[450px] overflow-hidden">
             
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-6 mb-6 gap-4">
-              <div>
-                <h2 className="text-xl font-bold text-[#364146] font-heading flex items-center gap-2">
-                  <Settings className="w-5 h-5 text-[#005E60]" />
-                  Kelola Daftar Loket (Counters)
-                </h2>
-                <p className="text-gray-400 text-xs mt-0.5">Tambah, edit, dan hapus loket teller/kredit/CS yang aktif di bank.</p>
+            {/* Premium Header dengan background gradient */}
+            <div className="bg-gradient-to-r from-[#005E60] to-[#008285] px-8 py-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                    <Settings className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-white font-heading">
+                      Kelola Daftar Loket
+                    </h2>
+                    <p className="text-xs text-white/70 mt-0.5">
+                      {isAdmin 
+                        ? 'Kelola loket untuk semua cabang — Tambah, edit, aktif/nonaktifkan'
+                        : `${namaKantor || `Cabang ${idKantor}`} — Atur loket cabang Anda`
+                      }
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    setEditingCounter(null);
+                    setCounterForm({ name: "", type: "Teller", is_active: true, id_kantor: isAdmin ? (allBranches[0]?.id_kantor || idKantor) : idKantor });
+                    setShowCounterModal(true);
+                  }}
+                  className="bg-white hover:bg-slate-50 text-[#005E60] rounded-xl px-5 py-3 font-bold text-xs flex items-center gap-1.5 shadow-lg transition-all active:scale-[0.98] whitespace-nowrap"
+                >
+                  <Plus className="w-4 h-4" />
+                  Tambah Loket Baru
+                </button>
               </div>
-              <button 
-                onClick={() => {
-                  setEditingCounter(null);
-                  setCounterForm({ name: "", type: "Teller", is_active: true });
-                  setShowCounterModal(true);
-                }}
-                className="bg-[#005E60] hover:bg-[#004a4c] text-white rounded-xl px-5 py-3 font-bold text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-[0.98]"
-              >
-                <Plus className="w-4 h-4" />
-                Tambah Loket Baru
-              </button>
+            </div>
+
+            {/* Stats bar — jumlah loket aktif/total */}
+            <div className="flex items-center gap-4 px-8 py-3 bg-slate-50 border-b border-gray-100">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-green-700">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                {counters.filter(c => c.is_active).length} Aktif
+              </div>
+              <div className="flex items-center gap-1.5 text-xs font-bold text-gray-500">
+                <div className="w-2 h-2 rounded-full bg-gray-300" />
+                {counters.filter(c => !c.is_active).length} Nonaktif
+              </div>
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[#005E60]">
+                <ShieldCheck className="w-3 h-3" />
+                Total {counters.length} Loket
+              </div>
             </div>
 
             {/* List Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            <div className="p-8">
               {counters.length > 0 ? (
-                counters.map((c) => (
-                  <div 
-                    key={c.id}
-                    className={`rounded-[24px] border p-6 shadow-sm flex flex-col justify-between min-h-[160px] relative transition-all ${
-                      c.is_active 
-                        ? 'bg-green-50/20 border-green-200' 
-                        : 'bg-slate-50/50 border-gray-200 opacity-70'
-                    }`}
-                  >
-                    <div>
-                      <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">{c.type}</span>
-                      <h4 className="font-heading font-extrabold text-lg text-[#364146] mt-1">{c.name}</h4>
-                    </div>
-
-                    <div className="flex items-center justify-between border-t pt-4 mt-4">
-                      {/* Active Status Indicator */}
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                  {counters.map((c) => (
+                    <div 
+                      key={c.id}
+                      className={`rounded-2xl border-2 p-5 flex flex-col justify-between min-h-[170px] relative transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 group ${
                         c.is_active 
-                          ? 'bg-green-100 text-green-700' 
-                          : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {c.is_active ? 'Aktif' : 'Nonaktif'}
-                      </span>
+                          ? 'bg-white border-emerald-200 hover:border-emerald-300' 
+                          : 'bg-slate-50/70 border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      {/* Status indicator dot */}
+                      <div className={`absolute top-3 right-3 w-2.5 h-2.5 rounded-full ${
+                        c.is_active ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-gray-300'
+                      }`} />
+                      
+                      {/* Type badge */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full ${
+                          c.type === 'Teller' 
+                            ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                            : c.type === 'Kredit'
+                            ? 'bg-amber-50 text-amber-600 border border-amber-200'
+                            : 'bg-purple-50 text-purple-600 border border-purple-200'
+                        }`}>
+                          {c.type}
+                        </span>
+                      </div>
 
-                      {/* CRUD Buttons (pencil and X icons on top right/left on wireframe, grouped here for UI convenience) */}
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={() => {
-                            setEditingCounter(c);
-                            setCounterForm({ name: c.name, type: c.type, is_active: c.is_active });
-                            setShowCounterModal(true);
-                          }}
-                          className="p-2 hover:bg-slate-100 text-blue-500 rounded-lg border border-gray-100"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button 
-                          onClick={() => setDeleteConfirm({ type: 'loket', id: c.id })}
-                          className="p-2 hover:bg-red-50 text-red-500 rounded-lg border border-red-100"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                      {/* Counter name */}
+                      <div className="flex-grow flex items-center">
+                        <h4 className={`font-heading font-extrabold text-xl leading-tight ${
+                          c.is_active ? 'text-[#364146]' : 'text-gray-400'
+                        }`}>
+                          {c.name}
+                        </h4>
+                      </div>
+
+                      {/* Bottom actions */}
+                      <div className="flex items-center justify-between border-t pt-4 mt-2">
+                        {/* Toggle status */}
+                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                          c.is_active 
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                            : 'bg-slate-100 text-slate-500 border border-slate-200'
+                        }`}>
+                          {c.is_active ? 'Aktif' : 'Nonaktif'}
+                        </span>
+
+                        {/* Action buttons */}
+                        <div className="flex gap-1.5 opacity-70 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => {
+                              setEditingCounter(c);
+                              setCounterForm({ name: c.name, type: c.type, is_active: c.is_active, id_kantor: c.id_kantor || idKantor });
+                              setShowCounterModal(true);
+                            }}
+                            className="p-2 hover:bg-blue-50 text-blue-500 rounded-xl border border-gray-200 hover:border-blue-200 transition-all"
+                            title="Edit loket"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={() => setDeleteConfirm({ type: 'loket', id: c.id })}
+                            className="p-2 hover:bg-red-50 text-red-500 rounded-xl border border-gray-200 hover:border-red-200 transition-all"
+                            title="Hapus loket"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                </div>
               ) : (
-                <div className="col-span-full text-center py-16 text-gray-400">
-                  Tidak ada loket terdaftar.
+                <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+                  <div className="w-20 h-20 bg-gray-50 rounded-3xl flex items-center justify-center mb-5 border-2 border-dashed border-gray-200">
+                    <Settings className="w-8 h-8 text-gray-300" />
+                  </div>
+                  <p className="font-bold text-gray-400">Belum ada loket terdaftar</p>
+                  <p className="text-xs mt-1.5 text-gray-400">Klik "Tambah Loket Baru" untuk mulai menambahkan loket</p>
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* TAB 3: Kelola Informasi (Wireframe: page kelola informasi) */}
+        {/* TAB 3: Kelola Teks Pengumuman (Running Text) */}
         {activeTab === 'informasi' && (
-          <div className="bg-white rounded-[32px] border border-gray-200 shadow-xl p-8 flex flex-col min-h-[450px]">
+          <div className="bg-white rounded-[32px] border border-gray-200 shadow-xl flex flex-col min-h-[450px] overflow-hidden">
             
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-6 mb-6 gap-4">
-              <div>
-                <h2 className="text-xl font-bold text-[#364146] font-heading flex items-center gap-2">
-                  <Info className="w-5 h-5 text-[#005E60]" />
-                  Kelola Teks Informasi Publik (Announcements)
-                </h2>
-                <p className="text-gray-400 text-xs mt-0.5">Atur teks informasi berjalan yang tampil di bagian bawah monitor utama.</p>
+            {/* Premium Header */}
+            <div className="bg-gradient-to-r from-[#005E60] to-[#008285] px-8 py-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                    <Info className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-white font-heading">
+                      Kelola Teks Pengumuman
+                    </h2>
+                    <p className="text-xs text-white/70 mt-0.5">
+                      Atur teks berjalan yang tampil di bagian bawah monitor utama cabang
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    setEditingAnnounce(null);
+                    setAnnounceForm({ content: "", is_active: true, id_kantor: "" });
+                    setShowAnnounceModal(true);
+                  }}
+                  className="bg-white hover:bg-slate-50 text-[#005E60] rounded-xl px-5 py-3 font-bold text-xs flex items-center gap-1.5 shadow-lg transition-all active:scale-[0.98] whitespace-nowrap"
+                >
+                  <Plus className="w-4 h-4" />
+                  Tambah Teks Baru
+                </button>
               </div>
-              <button 
-                onClick={() => {
-                  setEditingAnnounce(null);
-                  setAnnounceForm({ content: "", is_active: true, id_kantor: "" });
-                  setShowAnnounceModal(true);
-                }}
-                className="bg-[#005E60] hover:bg-[#004a4c] text-white rounded-xl px-5 py-3 font-bold text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-[0.98]"
-              >
-                <Plus className="w-4 h-4" />
-                Tambah Teks Baru
-              </button>
+            </div>
+
+            {/* Stats bar */}
+            <div className="flex items-center gap-4 px-8 py-3 bg-slate-50 border-b border-gray-100">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-green-700">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                {announcements.filter(a => a.is_active).length} Aktif
+              </div>
+              <div className="flex items-center gap-1.5 text-xs font-bold text-gray-500">
+                <div className="w-2 h-2 rounded-full bg-gray-300" />
+                {announcements.filter(a => !a.is_active).length} Nonaktif
+              </div>
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[#005E60]">
+                <Info className="w-3 h-3" />
+                Total {announcements.length} Teks
+              </div>
             </div>
 
             {/* List Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-8">
               {announcements.length > 0 ? (
-                announcements.map((a) => (
-                  <div 
-                    key={a.id}
-                    className={`rounded-[24px] border p-6 shadow-sm flex flex-col justify-between min-h-[160px] relative transition-all ${
-                      a.is_active 
-                        ? 'bg-green-50/20 border-green-200' 
-                        : 'bg-slate-50/50 border-gray-200 opacity-70'
-                    }`}
-                  >
-                    <div>
-                      <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">
-                        Teks Informasi {a.id_kantor ? `• Cabang ${a.id_kantor}` : "• Global (Pusat)"}
-                      </span>
-                      <p className="font-semibold text-sm text-[#364146] mt-2 leading-relaxed">{a.content}</p>
-                    </div>
-
-                    <div className="flex items-center justify-between border-t pt-4 mt-4">
-                      {/* Active indicator */}
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {announcements.map((a) => (
+                    <div 
+                      key={a.id}
+                      className={`rounded-2xl border-2 p-5 flex flex-col justify-between min-h-[160px] relative transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 group ${
                         a.is_active 
-                          ? 'bg-green-100 text-green-700' 
-                          : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {a.is_active ? 'Tampil di TV' : 'Disembunyikan'}
-                      </span>
+                          ? 'bg-white border-emerald-200 hover:border-emerald-300' 
+                          : 'bg-slate-50/70 border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      {/* Status dot */}
+                      <div className={`absolute top-3 right-3 w-2.5 h-2.5 rounded-full ${
+                        a.is_active ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-gray-300'
+                      }`} />
+                      
+                      {/* Branch badge */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full bg-sky-50 text-sky-600 border border-sky-200">
+                          {a.id_kantor ? `Cabang ${a.id_kantor}` : 'Global (Pusat)'}
+                        </span>
+                      </div>
 
-                      {/* CRUD Buttons */}
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={() => {
-                            setEditingAnnounce(a);
-                            setAnnounceForm({ content: a.content, is_active: a.is_active, id_kantor: a.id_kantor || "" });
-                            setShowAnnounceModal(true);
-                          }}
-                          className="p-2 hover:bg-slate-100 text-blue-500 rounded-lg border border-gray-100"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button 
-                          onClick={() => setDeleteConfirm({ type: 'informasi', id: a.id })}
-                          className="p-2 hover:bg-red-50 text-red-500 rounded-lg border border-red-100"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                      {/* Content preview */}
+                      <div className="flex-grow flex items-start">
+                        <p className="text-sm font-semibold text-[#364146] leading-relaxed line-clamp-3">
+                          {a.content}
+                        </p>
+                      </div>
+
+                      {/* Bottom actions */}
+                      <div className="flex items-center justify-between border-t pt-4 mt-3">
+                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                          a.is_active 
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                            : 'bg-slate-100 text-slate-500 border border-slate-200'
+                        }`}>
+                          {a.is_active ? 'Tampil di TV' : 'Disembunyikan'}
+                        </span>
+
+                        <div className="flex gap-1.5 opacity-70 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => {
+                              setEditingAnnounce(a);
+                              setAnnounceForm({ content: a.content, is_active: a.is_active, id_kantor: a.id_kantor || "" });
+                              setShowAnnounceModal(true);
+                            }}
+                            className="p-2 hover:bg-blue-50 text-blue-500 rounded-xl border border-gray-200 hover:border-blue-200 transition-all"
+                            title="Edit teks"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={() => setDeleteConfirm({ type: 'informasi', id: a.id })}
+                            className="p-2 hover:bg-red-50 text-red-500 rounded-xl border border-gray-200 hover:border-red-200 transition-all"
+                            title="Hapus teks"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                </div>
               ) : (
-                <div className="col-span-full text-center py-16 text-gray-400">
-                  Tidak ada teks informasi terdaftar.
+                <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+                  <div className="w-20 h-20 bg-gray-50 rounded-3xl flex items-center justify-center mb-5 border-2 border-dashed border-gray-200">
+                    <Info className="w-8 h-8 text-gray-300" />
+                  </div>
+                  <p className="font-bold text-gray-400">Belum ada teks pengumuman</p>
+                  <p className="text-xs mt-1.5 text-gray-400">Klik "Tambah Teks Baru" untuk menambahkan pengumuman berjalan</p>
                 </div>
               )}
             </div>
@@ -1284,113 +1299,160 @@ export default function CounterPage() {
 
         {/* TAB 4: Informasi Publik (Gambar & YouTube untuk Monitor Display) */}
         {activeTab === 'info-publik' && (
-          <div className="bg-white rounded-[32px] border border-gray-200 shadow-xl p-8 flex flex-col min-h-[450px]">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-6 mb-6 gap-4">
-              <div>
-                <h2 className="text-xl font-bold text-[#364146] font-heading flex items-center gap-2">
-                  <ImageIcon className="w-5 h-5 text-[#00638a]" />
-                  Informasi Publik — Galeri Display
-                </h2>
-                <p className="text-gray-400 text-xs mt-0.5">Kelola gambar dan video YouTube yang tampil di panel kanan Monitor Display. Hanya konten aktif dan belum kadaluarsa yang ditampilkan.</p>
+          <div className="bg-white rounded-[32px] border border-gray-200 shadow-xl flex flex-col min-h-[450px] overflow-hidden">
+            
+            {/* Premium Header */}
+            <div className="bg-gradient-to-r from-[#00638a] to-[#0085b2] px-8 py-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                    <ImageIcon className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-white font-heading">
+                      Informasi Publik — Galeri Display
+                    </h2>
+                    <p className="text-xs text-white/70 mt-0.5">
+                      Kelola gambar & video YouTube untuk panel kanan monitor TV cabang
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    setEditingInfo(null);
+                    setInfoForm({ judul: '', tipe: 'gambar', konten: '', tanggal_berlaku: '', tanggal_kadaluarsa: '', is_active: true, urutan: 0, id_kantor: '' });
+                    setShowInfoModal(true);
+                  }}
+                  className="bg-white hover:bg-slate-50 text-[#00638a] rounded-xl px-5 py-3 font-bold text-xs flex items-center gap-1.5 shadow-lg transition-all active:scale-[0.98] whitespace-nowrap"
+                >
+                  <Plus className="w-4 h-4" />
+                  Tambah Konten
+                </button>
               </div>
-              <button 
-                onClick={() => {
-                  setEditingInfo(null);
-                  setInfoForm({ judul: '', tipe: 'gambar', konten: '', tanggal_berlaku: '', tanggal_kadaluarsa: '', is_active: true, urutan: 0, id_kantor: '' });
-                  setShowInfoModal(true);
-                }}
-                className="bg-[#00638a] hover:bg-[#004f6e] text-white rounded-xl px-5 py-3 font-bold text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-[0.98] whitespace-nowrap"
-              >
-                <Plus className="w-4 h-4" />
-                Tambah Konten
-              </button>
             </div>
 
-            {infoPublikList.length === 0 ? (
-              <div className="flex-grow flex flex-col items-center justify-center text-gray-400 py-16">
-                <ImageIcon className="w-16 h-16 mb-4 text-gray-200" />
-                <p className="font-semibold">Belum ada konten informasi publik</p>
-                <p className="text-xs mt-1">Klik "Tambah Konten" untuk mulai menambahkan gambar atau video</p>
+            {/* Stats bar */}
+            <div className="flex items-center gap-4 px-8 py-3 bg-slate-50 border-b border-gray-100">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-green-700">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                {infoPublikList.filter(i => i.is_active).length} Aktif
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {infoPublikList.map((item) => {
-                  const isYoutube = item.tipe === 'youtube';
-                  const ytId = isYoutube ? item.konten.match(/(?:youtu\.be\/|embed\/|watch\?v=|&v=)([^#&?]{11})/)?.[1] : null;
-                  const thumbUrl = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : item.konten;
+              <div className="flex items-center gap-1.5 text-xs font-bold text-gray-500">
+                <div className="w-2 h-2 rounded-full bg-gray-300" />
+                {infoPublikList.filter(i => !i.is_active).length} Nonaktif
+              </div>
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[#00638a]">
+                <ImageIcon className="w-3 h-3" />
+                {infoPublikList.filter(i => i.tipe === 'gambar').length} Gambar • {infoPublikList.filter(i => i.tipe === 'youtube').length} Video
+              </div>
+            </div>
 
-                  return (
-                    <div key={item.id} className={`rounded-[20px] border overflow-hidden shadow-sm transition-all ${ item.is_active ? 'border-[#00638a]/30' : 'border-gray-200 opacity-60' }`}>
-                      {/* Thumbnail */}
-                      <div className="relative h-40 bg-gray-900 overflow-hidden">
-                        <img
-                          src={isYoutube ? thumbUrl! : item.konten}
-                          alt={item.judul}
-                          className="w-full h-full object-cover"
-                          onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x240?text=Preview'; }}
-                        />
-                        {isYoutube && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                            <div className="bg-red-600 rounded-full p-3">
-                              <PlaySquare className="w-6 h-6 text-white" />
+            {/* Konten Grid */}
+            <div className="p-8">
+              {infoPublikList.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                  <div className="w-20 h-20 bg-gray-50 rounded-3xl flex items-center justify-center mb-5 border-2 border-dashed border-gray-200">
+                    <ImageIcon className="w-8 h-8 text-gray-300" />
+                  </div>
+                  <p className="font-bold text-gray-400">Belum ada konten informasi publik</p>
+                  <p className="text-xs mt-1.5 text-gray-400">Klik "Tambah Konten" untuk menambahkan gambar atau video</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {infoPublikList.map((item) => {
+                    const isYoutube = item.tipe === 'youtube';
+                    const ytId = isYoutube ? item.konten.match(/(?:youtu\.be\/|embed\/|watch\?v=|&v=)([^#&?]{11})/)?.[1] : null;
+                    const thumbUrl = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : item.konten;
+
+                    return (
+                      <div key={item.id} className={`rounded-2xl border-2 overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 group ${
+                        item.is_active ? 'border-[#00638a]/30' : 'border-gray-200 opacity-70'
+                      }`}>
+                        {/* Thumbnail */}
+                        <div className="relative h-44 bg-gray-900 overflow-hidden">
+                          <img
+                            src={isYoutube ? thumbUrl! : item.konten}
+                            alt={item.judul}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x240?text=Preview'; }}
+                          />
+                          {isYoutube && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                              <div className="bg-red-600 rounded-full p-3 shadow-lg">
+                                <PlaySquare className="w-6 h-6 text-white" />
+                              </div>
                             </div>
+                          )}
+                          <div className={`absolute top-3 left-3 text-[9px] font-bold px-2.5 py-1 rounded-full uppercase shadow-sm ${
+                            isYoutube ? 'bg-red-600 text-white' : 'bg-[#00638a] text-white'
+                          }`}>
+                            {item.tipe} {item.id_kantor ? `(${item.id_kantor})` : "(Global)"}
                           </div>
-                        )}
-                        <div className={`absolute top-2 left-2 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase ${ isYoutube ? 'bg-red-600 text-white' : 'bg-[#00638a] text-white' }`}>
-                          {item.tipe} {item.id_kantor ? `(${item.id_kantor})` : "(Global)"}
+                          <div className={`absolute top-3 right-3 text-[9px] font-bold px-2.5 py-1 rounded-full shadow-sm ${
+                            item.is_active ? 'bg-emerald-500 text-white' : 'bg-gray-500 text-white'
+                          }`}>
+                            {item.is_active ? 'Aktif' : 'Nonaktif'}
+                          </div>
                         </div>
-                        <div className={`absolute top-2 right-2 text-[9px] font-bold px-2 py-0.5 rounded-full ${ item.is_active ? 'bg-emerald-500 text-white' : 'bg-gray-400 text-white' }`}>
-                          {item.is_active ? 'Aktif' : 'Nonaktif'}
-                        </div>
-                      </div>
 
-                      {/* Info */}
-                      <div className="p-4 bg-white">
-                        <p className="font-bold text-sm text-[#364146] truncate">{item.judul}</p>
-                        {item.urutan > 0 && <p className="text-[10px] text-gray-400 mt-0.5">Urutan: {item.urutan}</p>}
-                        {item.tanggal_kadaluarsa && (
-                          <p className="text-[10px] text-amber-600 mt-0.5">Exp: {item.tanggal_kadaluarsa}</p>
-                        )}
-                        <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
-                          <button
-                            onClick={() => handleToggleInfoActive(item)}
-                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${ item.is_active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200' }`}
-                          >
-                            {item.is_active ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                            {item.is_active ? 'Sembunyikan' : 'Tampilkan'}
-                          </button>
-                          <button
-                            onClick={() => {
-                              setEditingInfo(item);
-                              setInfoForm({
-                                judul: item.judul,
-                                tipe: item.tipe,
-                                konten: item.konten,
-                                tanggal_berlaku: item.tanggal_berlaku || '',
-                                tanggal_kadaluarsa: item.tanggal_kadaluarsa || '',
-                                is_active: item.is_active,
-                                urutan: item.urutan,
-                                id_kantor: item.id_kantor || '',
-                              });
-                              setShowInfoModal(true);
-                            }}
-                            className="p-1.5 hover:bg-slate-100 text-blue-500 rounded-lg border border-gray-200"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm({ type: 'info-publik', id: item.id })}
-                            className="p-1.5 hover:bg-red-50 text-red-500 rounded-lg border border-red-100"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                        {/* Info */}
+                        <div className="p-4 bg-white">
+                          <p className="font-bold text-sm text-[#364146] truncate">{item.judul}</p>
+                          <div className="flex items-center gap-3 mt-1">
+                            {item.urutan > 0 && (
+                              <span className="text-[10px] text-gray-400">#{item.urutan}</span>
+                            )}
+                            {item.tanggal_kadaluarsa && (
+                              <span className="text-[10px] text-amber-600">Exp: {item.tanggal_kadaluarsa}</span>
+                            )}
+                          </div>
+                          <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
+                            <button
+                              onClick={() => handleToggleInfoActive(item)}
+                              className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-xl text-[10px] font-bold transition-all ${
+                                item.is_active 
+                                  ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200' 
+                                  : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                              }`}
+                            >
+                              {item.is_active ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                              {item.is_active ? 'Sembunyikan' : 'Tampilkan'}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingInfo(item);
+                                setInfoForm({
+                                  judul: item.judul,
+                                  tipe: item.tipe,
+                                  konten: item.konten,
+                                  tanggal_berlaku: item.tanggal_berlaku || '',
+                                  tanggal_kadaluarsa: item.tanggal_kadaluarsa || '',
+                                  is_active: item.is_active,
+                                  urutan: item.urutan,
+                                  id_kantor: item.id_kantor || '',
+                                });
+                                setShowInfoModal(true);
+                              }}
+                              className="p-2 hover:bg-blue-50 text-blue-500 rounded-xl border border-gray-200 hover:border-blue-200 transition-all"
+                              title="Edit konten"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirm({ type: 'info-publik', id: item.id })}
+                              className="p-2 hover:bg-red-50 text-red-500 rounded-xl border border-gray-200 hover:border-red-200 transition-all"
+                              title="Hapus konten"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1412,6 +1474,32 @@ export default function CounterPage() {
             </h3>
 
             <form onSubmit={handleSaveCounter} className="flex flex-col gap-4">
+
+              {/* Pilih Cabang — hanya tampil untuk admin */}
+              {isAdmin ? (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Cabang</label>
+                  <select
+                    value={counterForm.id_kantor ?? idKantor}
+                    onChange={(e) => setCounterForm({ ...counterForm, id_kantor: e.target.value })}
+                    className="border border-gray-250 bg-slate-50 text-gray-800 rounded-xl px-4 py-3 font-semibold focus:outline-none focus:ring-2 focus:ring-[#005E60] focus:bg-white transition-all shadow-sm"
+                    required
+                  >
+                    {allBranches.length > 0 ? allBranches.map((b) => (
+                      <option key={b.id_kantor} value={b.id_kantor}>{b.nama_kantor} ({b.id_kantor})</option>
+                    )) : (
+                      <option value={idKantor}>{namaKantor || `Cabang ${idKantor}`}</option>
+                    )}
+                  </select>
+                </div>
+              ) : (
+                /* Petugas: cabang di-set otomatis, hanya tampilkan info */
+                <div className="bg-[#e6f2f2] border border-[#b2e1e3] rounded-xl p-3 flex items-center gap-2">
+                  <span className="text-xs font-bold text-[#005E60]">Cabang:</span>
+                  <span className="text-xs font-semibold text-[#364146]">{namaKantor || `Cabang ${idKantor}`}</span>
+                </div>
+              )}
+
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Nama Loket</label>
                 <input 

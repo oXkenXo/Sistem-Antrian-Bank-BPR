@@ -13,6 +13,7 @@ import {
   Loader2,
   CalendarDays
 } from "lucide-react";
+import { branchApi, queueApi } from "@/lib/api";
 
 export default function KioskPage() {
   const [idKantor, setIdKantor] = useState<string>("01");
@@ -36,12 +37,9 @@ export default function KioskPage() {
 
       const fetchBranchName = async () => {
         try {
-          const response = await fetch("http://127.0.0.1:8000/api/branches");
-          if (response.ok) {
-            const data = await response.json();
-            const current = data.find((b: any) => b.id_kantor === id);
-            if (current) setNamaKantor(current.nama_kantor);
-          }
+          const data = await branchApi.list();
+          const current = data.find((b: any) => b.id_kantor === id);
+          if (current) setNamaKantor(current.nama_kantor);
         } catch (e) {
           console.warn("Gagal memuat nama cabang di Kiosk", e);
         }
@@ -96,24 +94,11 @@ export default function KioskPage() {
   const handleTakeQueue = async (service: string, prefix: string) => {
     setIsPrinting(true);
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/queues/store", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          id_kantor: idKantor, // Kirim id_kantor!
-          service_type: service,
-          prefix: prefix,
-        }),
+      const resData = await queueApi.store({
+        id_kantor: idKantor,
+        service_type: service,
+        prefix: prefix,
       });
-
-      const resData = await response.json();
-
-      if (!response.ok) {
-        throw new Error(resData.message || "Gagal membuat nomor antrean.");
-      }
 
       const currentTime = new Date().toLocaleTimeString("id-ID", {
         hour: "2-digit",

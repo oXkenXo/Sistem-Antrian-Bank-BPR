@@ -91,11 +91,12 @@ class DatabaseSeeder extends Seeder
         );
 
         // 5. Seed default iklan/konten samping (global fallback)
+        // Gunakan link YouTube resmi BPR Kerta Raharja jika tersedia, atau fallback ke gambar statis
         \App\Models\InformasiPublik::updateOrCreate(
-            ['judul' => 'Video Profil BPR Kerta Raharja', 'id_kantor' => null],
+            ['judul' => 'Layanan BPR Kerta Raharja', 'id_kantor' => null],
             [
-                'tipe' => 'youtube',
-                'konten' => 'https://www.youtube.com/embed/dQw4w9WgXcQ', // Link video profil placeholder
+                'tipe' => 'gambar',
+                'konten' => 'https://bankkertaraharja.co.id/assets/img/logo-bpr-kr.png',
                 'is_active' => true,
                 'urutan' => 3
             ]

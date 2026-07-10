@@ -78,7 +78,7 @@ class InterestRateController extends Controller
     }
 
     /**
-     * Hardcoded fallback: BI Rate per Agustus 2024 = 6.25%
+     * Hardcoded fallback: BI Rate Juni 2026 = 5.75%
      * Update this when BI Rate changes officially.
      */
     private function getFallbackData(): array
@@ -86,7 +86,7 @@ class InterestRateController extends Controller
         return [
             'bi_rate'      => 5.75,
             'bi_rate_str'  => '5,75%',
-            'period'       => 'Januari 2025',
+            'period'       => 'Juni 2026',
             'source'       => 'Bank Indonesia (Fallback)',
             'last_updated' => now()->toDateTimeString(),
         ];

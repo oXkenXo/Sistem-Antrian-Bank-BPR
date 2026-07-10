@@ -2,42 +2,16 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Clock, Megaphone, Image as ImageIcon, PlaySquare } from "lucide-react";
-
-interface QueueItem {
-  id: number;
-  ticket_number: string;
-  service_type: string;
-  prefix: string;
-  number: number;
-  status: string;
-  counter_name: string | null;
-  updated_at: string;
-}
-
-interface CounterItem {
-  id: number;
-  name: string;
-  type: string;
-  is_active: boolean;
-}
-
-interface BiRateData {
-  bi_rate: number;
-  bi_rate_str: string;
-  period: string;
-  source: string;
-}
-
-interface InformasiPublikItem {
-  id: number;
-  judul: string;
-  tipe: "gambar" | "youtube";
-  konten: string;
-  tanggal_berlaku: string | null;
-  tanggal_kadaluarsa: string | null;
-  is_active: boolean;
-  urutan: number;
-}
+import { 
+  queueApi, 
+  counterApi, 
+  informasiApi, 
+  interestApi,
+  QueueItem, 
+  CounterItem, 
+  BiRateData, 
+  InformasiPublikItem 
+} from "@/lib/api";
 
 // Extract YouTube video ID from various URL formats
 function getYoutubeId(url: string): string | null {
@@ -139,17 +113,10 @@ export default function DisplayPage() {
   const fetchStatus = async () => {
     if (!idKantor) return;
     try {
-      const [resStatus, resCounters] = await Promise.all([
-        fetch(`http://127.0.0.1:8000/api/queues/status?id_kantor=${idKantor}`),
-        fetch(`http://127.0.0.1:8000/api/counters?id_kantor=${idKantor}`)
+      const [data, countersData] = await Promise.all([
+        queueApi.status(idKantor),
+        counterApi.list(idKantor),
       ]);
-      // Abaikan error validasi (422) atau server error (5xx) secara silent
-      if (resStatus.status === 422 || resCounters.status === 422) return;
-      if (resStatus.status >= 500 || resCounters.status >= 500) return;
-      if (!resStatus.ok || !resCounters.ok) return;
-
-      const data = await resStatus.json();
-      const countersData = await resCounters.json();
 
       setCallingQueues(data.calling || []);
       setAnnouncements(data.announcements || []);
@@ -172,11 +139,8 @@ export default function DisplayPage() {
   // Fetch active informasi publik
   const fetchInformasi = async () => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/informasi-publik/aktif?id_kantor=${idKantor}`);
-      if (res.ok) {
-        const data = await res.json();
-        setInformasiList(data || []);
-      }
+      const data = await informasiApi.aktif(idKantor);
+      setInformasiList(data || []);
     } catch (e) {
       console.error("Error fetching informasi publik:", e);
     }
@@ -185,8 +149,8 @@ export default function DisplayPage() {
   // Fetch BI Rate
   const fetchBiRate = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/interest-rate");
-      if (res.ok) setBiRate(await res.json());
+      const data = await interestApi.getRate();
+      setBiRate(data);
     } catch (e) {}
   };
 
