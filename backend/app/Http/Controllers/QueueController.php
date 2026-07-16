@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Queue;
+use App\Models\Counter;
 use App\Models\InformasiPublik;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class QueueController extends Controller
 {
@@ -51,10 +53,13 @@ class QueueController extends Controller
             $announcements = $branchText->pluck('konten');
         }
 
+        $counters = \App\Models\Counter::where('id_kantor', $idKantor)->where('is_active', true)->orderBy('urutan')->get();
+
         return response()->json([
             'calling' => $calling,
             'waiting' => $waitingList,
             'announcements' => $announcements,
+            'counters' => $counters,
             'stats' => [
                 'total_waiting' => $waitingList->count(),
                 'teller_waiting' => $waitingList->where('prefix', 'A')->count(),
@@ -66,6 +71,7 @@ class QueueController extends Controller
 
     /**
      * Create a new queue ticket (from Kiosk) at a specific branch.
+     * Menggunakan DB transaction + lockForUpdate untuk mencegah race condition duplikasi nomor.
      */
     public function store(Request $request)
     {
@@ -79,23 +85,27 @@ class QueueController extends Controller
         $prefix = strtoupper($request->prefix);
         $idKantor = $request->id_kantor;
 
-        // Get the latest number today for this prefix at this specific branch
-        $latestNumber = Queue::where('created_at', '>=', $today)
-            ->where('id_kantor', $idKantor)
-            ->where('prefix', $prefix)
-            ->max('number') ?? 0;
+        // Gunakan DB transaction dengan lock untuk mencegah duplikasi nomor pada request bersamaan
+        $queue = DB::transaction(function () use ($today, $prefix, $idKantor, $request) {
+            // Lock baris untuk mencegah race condition
+            $latestNumber = Queue::where('created_at', '>=', $today)
+                ->where('id_kantor', $idKantor)
+                ->where('prefix', $prefix)
+                ->lockForUpdate()
+                ->max('number') ?? 0;
 
-        $nextNumber = $latestNumber + 1;
-        $ticketNumber = $prefix . '-' . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
+            $nextNumber = $latestNumber + 1;
+            $ticketNumber = $prefix . '-' . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
 
-        $queue = Queue::create([
-            'id_kantor' => $idKantor,
-            'ticket_number' => $ticketNumber,
-            'service_type' => $request->service_type,
-            'prefix' => $prefix,
-            'number' => $nextNumber,
-            'status' => 'waiting',
-        ]);
+            return Queue::create([
+                'id_kantor' => $idKantor,
+                'ticket_number' => $ticketNumber,
+                'service_type' => $request->service_type,
+                'prefix' => $prefix,
+                'number' => $nextNumber,
+                'status' => 'waiting',
+            ]);
+        });
 
         return response()->json([
             'success' => true,
@@ -105,6 +115,7 @@ class QueueController extends Controller
 
     /**
      * Call the next waiting ticket for a counter at a specific branch.
+     * Memvalidasi bahwa counter_name terdaftar di cabang ini dengan service_type yang sesuai.
      */
     public function callNext(Request $request)
     {
@@ -117,14 +128,27 @@ class QueueController extends Controller
         $today = Carbon::today();
         $idKantor = $request->id_kantor;
 
-        // 1. Mark any active calling ticket of this counter at this branch as completed
-        Queue::where('created_at', '>=', $today)
+        // Validasi: Pastikan counter/nama loket benar-benar terdaftar di cabang ini
+        $counter = Counter::where('name', $request->counter_name)
             ->where('id_kantor', $idKantor)
-            ->where('counter_name', $request->counter_name)
-            ->where('status', 'calling')
-            ->update(['status' => 'completed']);
+            ->first();
 
-        // 2. Fetch the next waiting ticket for the selected service type at this branch
+        if (!$counter) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Loket tidak terdaftar di cabang ini.'
+            ], 403);
+        }
+
+        // Validasi: Pastikan service_type sesuai dengan tipe loket
+        if ($counter->type !== $request->service_type) {
+            return response()->json([
+                'success' => false,
+                'message' => "Loket {$request->counter_name} adalah {$counter->type}, bukan {$request->service_type}."
+            ], 403);
+        }
+
+        // Cari antrean berikutnya TERLEBIH DAHULU
         $nextQueue = Queue::where('created_at', '>=', $today)
             ->where('id_kantor', $idKantor)
             ->where('service_type', $request->service_type)
@@ -139,11 +163,21 @@ class QueueController extends Controller
             ], 404);
         }
 
-        // 3. Update the ticket to calling with this counter's name
-        $nextQueue->update([
-            'status' => 'calling',
-            'counter_name' => $request->counter_name,
-        ]);
+        // Hanya complete tiket aktif jika benar-benar ada antrean berikutnya
+        DB::transaction(function () use ($today, $idKantor, $request, $nextQueue) {
+            Queue::where('created_at', '>=', $today)
+                ->where('id_kantor', $idKantor)
+                ->where('counter_name', $request->counter_name)
+                ->where('status', 'calling')
+                ->lockForUpdate()
+                ->update(['status' => 'completed']);
+
+            // Update the ticket to calling with this counter's name
+            $nextQueue->update([
+                'status' => 'calling',
+                'counter_name' => $request->counter_name,
+            ]);
+        });
 
         return response()->json([
             'success' => true,

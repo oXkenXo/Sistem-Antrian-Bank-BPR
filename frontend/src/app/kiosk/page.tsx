@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import BrandLogo from "@/components/BrandLogo";
 import { 
   Clock, 
   Banknote, 
@@ -134,16 +135,7 @@ export default function KioskPage() {
         <div className="max-w-[1280px] mx-auto w-full px-6 md:px-12 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="bg-slate-50 p-1.5 rounded-xl border border-gray-100 flex items-center gap-3 shadow-sm">
-              <img 
-                alt="BPR Kerta Raharja Logo" 
-                className="h-8 w-auto object-contain" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAy_PuUGIg6TcQonvnrv6ChV2tYXRE9vUggKMMgCxgxhRuXOAR7d9HS89fGozDfGiPO7VB1_XILA462zY4-y7rIBw5IZMOMqDS39L2JBtPe3M4wqKYvHrhQ2yz9GDx4h91Ej7rQhMZePA5RMX8EKLGhANiiYcCX4oUDdB8SkCXb1XitQqo69ZO5G5lkJVH12RUQfg4srNQeClopYv2Ike-yRyP-U3N1S4HA842PFSAuFRWGmig0lFIIfXDs2kOdoj01zxU"
-              />
-              <img 
-                alt="BPR Logo" 
-                className="h-8 w-auto object-contain border-l pl-2 border-gray-200" 
-                src="https://lh3.googleusercontent.com/aida/AP1WRLvrPpBEMH26EO7GTocTY_KMD1TjlLHO36PMJh-oekRfNCpqp-fBJ3mM_h0WqzDjutLaXllTzKo4eGOtWKjSQoPXrO2tu-L7gxPmuowrCMXpqaOdRr68BgvdCMdcFjFuTXyZXhPWYwcbY2I4iuPkpIK_4Jvj0DZ5Ywi4Vr_sm5nVcuM3JY3qlEdaASfvVbIbsVhM79lu-tdVFjBk1Wn5xgUSEpVu2LyAsNKSHd2Vcg4e1h5NaS_uOUtOysO2"
-              />
+              <BrandLogo />
             </div>
             <span className="font-heading font-bold text-xl text-[#005E60] border-l pl-3 border-gray-200 hidden sm:inline tracking-tight">
               Sistem Antrean - {namaKantor || "Cabang BPR"}
@@ -268,16 +260,7 @@ export default function KioskPage() {
         <div className="max-w-[1280px] mx-auto w-full px-6 md:px-12 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="bg-white p-1 rounded-lg border border-gray-150 flex items-center gap-2 shadow-sm">
-              <img 
-                alt="BPR Kerta Raharja Logo" 
-                className="h-6 w-auto object-contain" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAy_PuUGIg6TcQonvnrv6ChV2tYXRE9vUggKMMgCxgxhRuXOAR7d9HS89fGozDfGiPO7VB1_XILA462zY4-y7rIBw5IZMOMqDS39L2JBtPe3M4wqKYvHrhQ2yz9GDx4h91Ej7rQhMZePA5RMX8EKLGhANiiYcCX4oUDdB8SkCXb1XitQqo69ZO5G5lkJVH12RUQfg4srNQeClopYv2Ike-yRyP-U3N1S4HA842PFSAuFRWGmig0lFIIfXDs2kOdoj01zxU"
-              />
-              <img 
-                alt="BPR Logo" 
-                className="h-6 w-auto object-contain border-l pl-2 border-gray-200" 
-                src="https://lh3.googleusercontent.com/aida/AP1WRLvrPpBEMH26EO7GTocTY_KMD1TjlLHO36PMJh-oekRfNCpqp-fBJ3mM_h0WqzDjutLaXllTzKo4eGOtWKjSQoPXrO2tu-L7gxPmuowrCMXpqaOdRr68BgvdCMdcFjFuTXyZXhPWYwcbY2I4iuPkpIK_4Jvj0DZ5Ywi4Vr_sm5nVcuM3JY3qlEdaASfvVbIbsVhM79lu-tdVFjBk1Wn5xgUSEpVu2LyAsNKSHd2Vcg4e1h5NaS_uOUtOysO2"
-              />
+              <BrandLogo className="scale-75 origin-left" />
             </div>
             <p className="text-xs font-semibold text-gray-500">
               © 2024 PT BPR Kerta Raharja (Perseroda).
@@ -323,14 +306,7 @@ export default function KioskPage() {
               <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-8 h-8 bg-white rounded-full"></div>
 
               <div className="flex items-center gap-1.5 mb-1.5">
-                <img 
-                  alt="BPR Kerta Raharja Logo" 
-                  className="h-4.5 w-auto object-contain" 
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuAy_PuUGIg6TcQonvnrv6ChV2tYXRE9vUggKMMgCxgxhRuXOAR7d9HS89fGozDfGiPO7VB1_XILA462zY4-y7rIBw5IZMOMqDS39L2JBtPe3M4wqKYvHrhQ2yz9GDx4h91Ej7rQhMZePA5RMX8EKLGhANiiYcCX4oUDdB8SkCXb1XitQqo69ZO5G5lkJVH12RUQfg4srNQeClopYv2Ike-yRyP-U3N1S4HA842PFSAuFRWGmig0lFIIfXDs2kOdoj01zxU"
-                />
-                <span className="text-[10px] uppercase tracking-widest text-[#005E60] font-bold font-heading">
-                  Kerta Raharja
-                </span>
+                <BrandLogo className="scale-75 origin-left" />
               </div>
               <span className="text-[9px] text-gray-400 tracking-wider uppercase mb-3">Struk Layanan Antrean</span>
               

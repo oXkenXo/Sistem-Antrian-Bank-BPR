@@ -25,6 +25,12 @@ class InformasiPublikController extends Controller
 
     /**
      * Hanya yang aktif & belum kadaluarsa dengan LOGIKA FALLBACK (untuk /display)
+     *
+     * Logika fallback:
+     * - Jika cabang TIDAK memiliki data AKTIF sama sekali untuk suatu tipe, gunakan data global (id_kantor IS NULL).
+     * - Jika cabang memiliki data AKTIF, tampilkan data cabang (data nonaktif/expired diabaikan).
+     * - Jika cabang memiliki data (aktif atau nonaktif) di DB, dia dianggap "mengelola sendiri" —
+     *   global hanya jadi fallback jika semua data cabang NONAKTIF.
      */
     public function aktif(Request $request)
     {
@@ -36,25 +42,46 @@ class InformasiPublikController extends Controller
             return response()->json($data);
         }
 
-        // Cek apakah cabang ini memiliki data sama sekali (baik aktif maupun tidak)
-        $hasBranchMedia = InformasiPublik::where('id_kantor', $idKantor)->whereIn('tipe', ['gambar', 'youtube'])->exists();
-        $hasBranchText = InformasiPublik::where('id_kantor', $idKantor)->where('tipe', 'teks_bergulir')->exists();
+        // Cek apakah cabang ini memiliki data AKTIF untuk media (gambar/youtube)
+        $hasActiveBranchMedia = InformasiPublik::aktif()
+            ->where('id_kantor', $idKantor)
+            ->whereIn('tipe', ['gambar', 'youtube'])->exists();
+
+        // Cek apakah cabang ini memiliki data AKTIF untuk running text
+        $hasActiveBranchText = InformasiPublik::aktif()
+            ->where('id_kantor', $idKantor)
+            ->where('tipe', 'teks_bergulir')->exists();
+
+        // Cek apakah cabang ini PERNAH memiliki data (aktif atau tidak) untuk menentukan
+        // apakah cabang sudah mengelola kontennya sendiri
+        $everHasBranchMedia = InformasiPublik::where('id_kantor', $idKantor)
+            ->whereIn('tipe', ['gambar', 'youtube'])->exists();
+        $everHasBranchText = InformasiPublik::where('id_kantor', $idKantor)
+            ->where('tipe', 'teks_bergulir')->exists();
 
         // Ambil konten aktif khusus cabang tersebut
         $branchKonten = InformasiPublik::aktif()->where('id_kantor', $idKantor)->get();
 
-        // Pisahkan konten berdasarkan tipe media (iklan kanan) dan running text (teks bergulir)
+        // Pisahkan konten berdasarkan tipe
         $branchMedia = $branchKonten->whereIn('tipe', ['gambar', 'youtube']);
         $branchText = $branchKonten->where('tipe', 'teks_bergulir');
 
-        // FALLBACK 1: Jika cabang tidak memiliki data media SAMA SEKALI di DB, gunakan iklan/media pusat (global)
-        if (!$hasBranchMedia) {
+        // FALLBACK MEDIA:
+        // Jika cabang TIDAK memiliki data AKTIF, dan juga BELUM PERNAH mengelola data sendiri,
+        // TAMPILKAN data global
+        if (!$hasActiveBranchMedia && !$everHasBranchMedia) {
             $branchMedia = InformasiPublik::aktif()->whereNull('id_kantor')->whereIn('tipe', ['gambar', 'youtube'])->get();
+        } elseif (!$hasActiveBranchMedia && $everHasBranchMedia) {
+            // Cabang pernah punya data tapi semuanya nonaktif — tetap tampilkan kosong (tidak fallback ke global)
+            $branchMedia = collect();
         }
 
-        // FALLBACK 2: Jika cabang tidak memiliki data running text SAMA SEKALI di DB, gunakan running text pusat (global)
-        if (!$hasBranchText) {
+        // FALLBACK TEXT:
+        // Sama seperti media
+        if (!$hasActiveBranchText && !$everHasBranchText) {
             $branchText = InformasiPublik::aktif()->whereNull('id_kantor')->where('tipe', 'teks_bergulir')->get();
+        } elseif (!$hasActiveBranchText && $everHasBranchText) {
+            $branchText = collect();
         }
 
         // Gabungkan kembali konten media dan running text
@@ -112,7 +139,7 @@ class InformasiPublikController extends Controller
             'tipe'                => 'required|in:gambar,youtube,teks_bergulir',
             'konten'              => 'required|string',
             'tanggal_berlaku'     => 'nullable|date',
-            'tanggal_kadaluarsa'  => 'nullable|date',
+            'tanggal_kadaluarsa'  => 'nullable|date|after_or_equal:tanggal_berlaku',
             'is_active'           => 'boolean',
             'urutan'              => 'integer|min:0',
         ]);

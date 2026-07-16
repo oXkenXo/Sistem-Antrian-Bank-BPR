@@ -17,6 +17,7 @@ import {
   Eye,
   EyeOff
 } from "lucide-react";
+import BrandLogo from "@/components/BrandLogo";
 import { branchApi, authApi, Branch } from "@/lib/api";
 
 // Fallback jika backend belum terhubung/migrasi belum selesai
@@ -69,8 +70,8 @@ export default function PortalPage() {
             if (services === "open" && idKantor) {
               const branch = data.find((b) => b.id_kantor === idKantor);
               if (branch) {
-                // Cek sessionStorage untuk user yang sudah login
-                const stored = sessionStorage.getItem(`user_${idKantor}`);
+                // Cek localStorage untuk user yang sudah login
+                const stored = localStorage.getItem(`user_${idKantor}`);
                 if (stored) {
                   try {
                     const u = JSON.parse(stored);
@@ -118,8 +119,8 @@ export default function PortalPage() {
         id_kantor: selectedBranch.id_kantor,
       });
 
-      // Simpan user info ke sessionStorage dengan key spesifik cabang
-      sessionStorage.setItem(`user_${selectedBranch.id_kantor}`, JSON.stringify(resData.user));
+      // Simpan user info ke localStorage dengan key spesifik cabang
+      localStorage.setItem(`user_${selectedBranch.id_kantor}`, JSON.stringify(resData.user));
       setLoggedInUser(resData.user);
       setLoginStep("services");
     } catch (error: any) {
@@ -144,16 +145,7 @@ export default function PortalPage() {
         <div className="max-w-[1280px] mx-auto w-full px-6 md:px-12 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="bg-slate-50 p-1.5 rounded-xl border border-gray-100 flex items-center gap-3 shadow-sm">
-              <img 
-                alt="BPR Kerta Raharja Logo" 
-                className="h-8 w-auto object-contain" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuCWWqcEz9_E2hC6He-3hzy5h5plVGE-UI0_ced8dFnN44m46QCPpYAqUJxHULP3TJ_TI7JN_TEXtPC7A--qD0qw6BJ5G3j8FsYA9L9ev4mQaGEEQcF2XXALmSdfuvpXMfhUyZZ_cDNFKvq-3TS2oMtJvz9oPYGCuJfJdCQYEdcdN_f8e_O8PKheajbXG3CubYlDXDekJugqCvjVWD-Hpi40ki-yVJaiN0oOM-wOVz4TFefVa6I25IETAsJYLXb8OiMvAbE"
-              />
-              <img 
-                alt="BPR Logo" 
-                className="h-8 w-auto object-contain border-l pl-2 border-gray-200" 
-                src="https://lh3.googleusercontent.com/aida/AP1WRLvrPpBEMH26EO7GTocTY_KMD1TjlLHO36PMJh-oekRfNCpqp-fBJ3mM_h0WqzDjutLaXllTzKo4eGOtWKjSQoPXrO2tu-L7gxPmuowrCMXpqaOdRr68BgvdCMdcFjFuTXyZXhPWYwcbY2I4iuPkpIK_4Jvj0DZ5Ywi4Vr_sm5nVcuM3JY3qlEdaASfvVbIbsVhM79lu-tdVFjBk1Wn5xgUSEpVu2LyAsNKSHd2Vcg4e1h5NaS_uOUtOysO2"
-              />
+              <BrandLogo />
             </div>
             <span className="font-heading font-bold text-xl text-[#005E60] border-l pl-3 border-gray-200 hidden sm:inline tracking-tight">
               Portal Layanan Cabang
@@ -236,11 +228,7 @@ export default function PortalPage() {
         <div className="max-w-[1280px] mx-auto w-full px-6 md:px-12 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="bg-white p-1 rounded-lg border border-gray-150 flex items-center gap-2 shadow-sm">
-              <img 
-                alt="BPR Kerta Raharja Logo" 
-                className="h-6 w-auto object-contain" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuCWWqcEz9_E2hC6He-3hzy5h5plVGE-UI0_ced8dFnN44m46QCPpYAqUJxHULP3TJ_TI7JN_TEXtPC7A--qD0qw6BJ5G3j8FsYA9L9ev4mQaGEEQcF2XXALmSdfuvpXMfhUyZZ_cDNFKvq-3TS2oMtJvz9oPYGCuJfJdCQYEdcdN_f8e_O8PKheajbXG3CubYlDXDekJugqCvjVWD-Hpi40ki-yVJaiN0oOM-wOVz4TFefVa6I25IETAsJYLXb8OiMvAbE"
-              />
+              <BrandLogo className="scale-75 origin-left" />
             </div>
             <p className="text-xs font-semibold text-gray-500">
               © 2024 PT BPR Kerta Raharja (Perseroda). All Rights Reserved.

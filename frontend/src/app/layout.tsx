@@ -27,9 +27,10 @@ export default function RootLayout({
   return (
     <html
       lang="id"
+      suppressHydrationWarning
       className={`${raleway.variable} ${openSans.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body suppressHydrationWarning className="min-h-full flex flex-col font-sans">{children}</body>
     </html>
   );
 }

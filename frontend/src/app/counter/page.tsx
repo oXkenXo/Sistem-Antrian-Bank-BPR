@@ -1,6 +1,8 @@
-"use client";import { 
-  useState, useEffect 
+"use client";
+import { 
+  useState, useEffect, useRef
 } from "react";
+import BrandLogo from "@/components/BrandLogo";
 import Link from "next/link";
 import { 
   Users, 
@@ -24,7 +26,10 @@ import {
   ArrowLeft,
   ShieldCheck,
   Wifi,
-  Clock
+  Clock,
+  CreditCard,
+  Briefcase,
+  Headphones
 } from "lucide-react";
 import { 
   branchApi, 
@@ -57,8 +62,11 @@ export default function CounterPage() {
   const [password, setPassword] = useState("");
   const [loggedInUser, setLoggedInUser] = useState<any>(null);
   const [counterName, setCounterName] = useState("Teller 1");
-  const [serviceType, setServiceType] = useState("Teller");
+  const [serviceType, setServiceType] = useState<string>("Teller");
   
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const isAdmin = loggedInUser?.role === "admin";
 
   // Ambil id_kantor dari query string URL saat halaman dimuat
@@ -127,12 +135,18 @@ export default function CounterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const lastDataRef = useRef<string>("");
+
   // Fetch all queues, stats, counters, and announcements
   const fetchStatus = async () => {
     if (!idKantor) return;
     try {
       const data = await queueApi.status(idKantor);
       
+      const currentDataStr = JSON.stringify({ waiting: data.waiting, stats: data.stats, calling: data.calling });
+      if (lastDataRef.current === currentDataStr) return;
+      lastDataRef.current = currentDataStr;
+
       setWaitingList(data.waiting || []);
       setStats(data.stats || {
         total_waiting: 0,
@@ -440,7 +454,7 @@ export default function CounterPage() {
   useEffect(() => {
     if (isConfigured) {
       fetchStatus();
-      const interval = setInterval(fetchStatus, 5000);
+      const interval = setInterval(fetchStatus, 3000);
       return () => clearInterval(interval);
     }
   }, [isConfigured, counterName, serviceType, idKantor]);
@@ -472,13 +486,23 @@ export default function CounterPage() {
   // SSO Session check dari landing page
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const stored = sessionStorage.getItem(`user_${idKantor}`);
+      const stored = localStorage.getItem(`user_${idKantor}`);
       if (stored) {
         try {
           const u = JSON.parse(stored);
-          if (u.role === 'admin' || u.id_kantor === idKantor) {
+          if (u.role === 'admin' || String(u.id_kantor) === String(idKantor)) {
             setLoggedInUser(u);
-            // Jangan langsung setIsConfigured(true) agar petugas/admin bisa memilih nomor loket & layanan terlebih dahulu.
+            const storedConfigSession = sessionStorage.getItem(`config_${idKantor}`);
+            const storedConfig = storedConfigSession || localStorage.getItem(`config_${idKantor}`);
+            if (storedConfig) {
+              if (!storedConfigSession) {
+                sessionStorage.setItem(`config_${idKantor}`, storedConfig);
+              }
+              const c = JSON.parse(storedConfig);
+              setCounterName(c.counterName);
+              setServiceType(c.serviceType);
+              setIsConfigured(true);
+            }
           }
         } catch (e) {
           console.error("Gagal membaca session user", e);
@@ -493,6 +517,11 @@ export default function CounterPage() {
     
     // Jika sudah terautentikasi lewat SSO di landing page, tinggal setuju loket & langsung masuk
     if (loggedInUser) {
+      if (typeof window !== "undefined") {
+        const configStr = JSON.stringify({ counterName, serviceType });
+        localStorage.setItem(`config_${idKantor}`, configStr);
+        sessionStorage.setItem(`config_${idKantor}`, configStr);
+      }
       setIsConfigured(true);
       return;
     }
@@ -507,6 +536,12 @@ export default function CounterPage() {
         id_kantor: idKantor,
       });
       setLoggedInUser(resData.user);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`user_${idKantor}`, JSON.stringify(resData.user));
+        const configStr = JSON.stringify({ counterName, serviceType });
+        localStorage.setItem(`config_${idKantor}`, configStr);
+        sessionStorage.setItem(`config_${idKantor}`, configStr);
+      }
       setIsConfigured(true);
     } catch (error: any) {
       setErrorMessage(error.message);
@@ -516,6 +551,10 @@ export default function CounterPage() {
   };
 
   // Login/Config Screen (Wireframe: page petugas)
+  if (!mounted) {
+    return null; // Prevents hydration mismatch without flashing a heavy spinner
+  }
+
   if (!isConfigured) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#00383a] via-[#005E60] to-[#002f31] p-6 relative">
@@ -536,11 +575,7 @@ export default function CounterPage() {
           
           {/* Top Logo Banner */}
           <div className="flex items-center gap-3 justify-center mb-6 border-b pb-5">
-            <img 
-              alt="BPR Kerta Raharja Logo" 
-              className="h-9 w-auto object-contain" 
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuAy_PuUGIg6TcQonvnrv6ChV2tYXRE9vUggKMMgCxgxhRuXOAR7d9HS89fGozDfGiPO7VB1_XILA462zY4-y7rIBw5IZMOMqDS39L2JBtPe3M4wqKYvHrhQ2yz9GDx4h91Ej7rQhMZePA5RMX8EKLGhANiiYcCX4oUDdB8SkCXb1XitQqo69ZO5G5lkJVH12RUQfg4srNQeClopYv2Ike-yRyP-U3N1S4HA842PFSAuFRWGmig0lFIIfXDs2kOdoj01zxU"
-            />
+            <BrandLogo />
             <span className="font-heading font-extrabold text-xl text-[#005E60] border-l pl-3 border-gray-200">
               Loket Petugas
             </span>
@@ -570,7 +605,9 @@ export default function CounterPage() {
                 type="button"
                 onClick={() => {
                   setLoggedInUser(null);
-                  sessionStorage.removeItem(`user_${idKantor}`);
+                  localStorage.removeItem(`user_${idKantor}`);
+                  localStorage.removeItem(`config_${idKantor}`);
+                  sessionStorage.removeItem(`config_${idKantor}`);
                 }}
                 className="text-xs font-bold text-red-500 hover:text-red-700 underline cursor-pointer"
               >
@@ -761,6 +798,10 @@ export default function CounterPage() {
 
           <button 
             onClick={() => {
+              setLoggedInUser(null);
+              localStorage.removeItem(`user_${idKantor}`);
+              localStorage.removeItem(`config_${idKantor}`);
+              sessionStorage.removeItem(`config_${idKantor}`);
               setIsConfigured(false);
               setActiveTab('antrean'); // Reset tab to default for safety
             }}
@@ -915,22 +956,69 @@ export default function CounterPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* Enhanced Premium Statistics Cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 px-8 pb-6">
+                  {[
+                    { 
+                      label: 'Total Menunggu', 
+                      value: stats.total_waiting, 
+                      icon: <Users className="w-5 h-5 text-[#005E60]" />,
+                      bgIcon: 'bg-[#005E60]/10',
+                      borderColor: 'border-[#005E60]/20',
+                      accent: 'bg-[#005E60]'
+                    },
+                    { 
+                      label: 'Antrean Teller (A)', 
+                      value: stats.teller_waiting, 
+                      icon: <CreditCard className="w-5 h-5 text-blue-600" />,
+                      bgIcon: 'bg-blue-50',
+                      borderColor: 'border-blue-100',
+                      accent: 'bg-blue-500'
+                    },
+                    { 
+                      label: 'Antrean Kredit (B)', 
+                      value: stats.kredit_waiting, 
+                      icon: <Briefcase className="w-5 h-5 text-amber-600" />,
+                      bgIcon: 'bg-amber-50',
+                      borderColor: 'border-amber-100',
+                      accent: 'bg-amber-500'
+                    },
+                    { 
+                      label: 'Antrean CS (C)', 
+                      value: stats.cs_waiting, 
+                      icon: <Headphones className="w-5 h-5 text-purple-600" />,
+                      bgIcon: 'bg-purple-50',
+                      borderColor: 'border-purple-100',
+                      accent: 'bg-purple-500'
+                    },
+                  ].map((stat, idx) => (
+                    <div 
+                      key={stat.label} 
+                      className={`relative bg-white rounded-2xl p-5 shadow-sm border ${stat.borderColor} overflow-hidden group hover:shadow-md transition-all duration-300 hover:-translate-y-1`}
+                    >
+                      {/* Accent Line */}
+                      <div className={`absolute left-0 top-0 bottom-0 w-1 ${stat.accent}`}></div>
+                      
+                      {/* Background Glow */}
+                      <div className={`absolute -right-4 -top-4 w-24 h-24 rounded-full ${stat.bgIcon} blur-2xl opacity-60 group-hover:opacity-100 transition-opacity duration-500`}></div>
+
+                      <div className="flex justify-between items-start relative z-10">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider mb-1">{stat.label}</span>
+                          <span className="text-4xl font-black text-gray-800 font-mono tracking-tighter">
+                            {stat.value}
+                          </span>
+                        </div>
+                        <div className={`w-10 h-10 rounded-xl ${stat.bgIcon} flex items-center justify-center shadow-inner`}>
+                          {stat.icon}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              {/* Enhanced Statistics Cards */}
-              <div className="grid grid-cols-4 gap-4">
-                {[
-                  { label: 'Total Menunggu', value: stats.total_waiting, color: 'from-[#005E60] to-[#008285]', textColor: 'text-white' },
-                  { label: 'Teller (A)', value: stats.teller_waiting, color: 'from-blue-500 to-blue-600', textColor: 'text-white' },
-                  { label: 'Kredit (B)', value: stats.kredit_waiting, color: 'from-amber-500 to-amber-600', textColor: 'text-white' },
-                  { label: 'CS (C)', value: stats.cs_waiting, color: 'from-purple-500 to-purple-600', textColor: 'text-white' },
-                ].map((stat) => (
-                  <div key={stat.label} className={`bg-gradient-to-br ${stat.color} rounded-2xl p-4 shadow-lg flex flex-col justify-center items-center text-center`}>
-                    <span className="text-[9px] uppercase font-bold opacity-75 tracking-wider">{stat.label}</span>
-                    <span className={`text-3xl font-black font-mono mt-0.5 ${stat.textColor}`}>{stat.value}</span>
-                  </div>
-                ))}
-              </div>
             </div>
 
             {/* Waiting List Sidebar */}

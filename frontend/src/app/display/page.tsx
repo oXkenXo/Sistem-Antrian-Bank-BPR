@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Clock, Megaphone, Image as ImageIcon, PlaySquare } from "lucide-react";
+import BrandLogo from "@/components/BrandLogo";
 import { 
   queueApi, 
   counterApi, 
@@ -109,18 +110,21 @@ export default function DisplayPage() {
     }
   };
 
+  const lastDataRef = useRef<string>("");
+
   // Poll queue status + counters
   const fetchStatus = async () => {
     if (!idKantor) return;
     try {
-      const [data, countersData] = await Promise.all([
-        queueApi.status(idKantor),
-        counterApi.list(idKantor),
-      ]);
+      const data = await queueApi.status(idKantor);
+
+      const currentDataStr = JSON.stringify({ calling: data.calling, announcements: data.announcements, counters: data.counters, stats: data.stats });
+      if (lastDataRef.current === currentDataStr) return;
+      lastDataRef.current = currentDataStr;
 
       setCallingQueues(data.calling || []);
       setAnnouncements(data.announcements || []);
-      setCounters(countersData.filter((c: CounterItem) => c.is_active) || []);
+      setCounters(data.counters || []);
 
       if (data.calling && data.calling.length > 0) {
         data.calling.forEach((ticket: QueueItem) => {
@@ -160,7 +164,7 @@ export default function DisplayPage() {
     fetchInformasi();
     const rateInterval = setInterval(fetchBiRate, 30 * 60 * 1000);
     const infoInterval = setInterval(fetchInformasi, 30 * 1000); // refresh every 30s
-    const statusInterval = setInterval(fetchStatus, 3000);
+    const statusInterval = setInterval(fetchStatus, 2500);
     return () => {
       clearInterval(statusInterval);
       clearInterval(rateInterval);
@@ -213,33 +217,20 @@ export default function DisplayPage() {
   return (
     <div className="h-screen flex flex-col overflow-hidden font-sans relative select-none">
 
-      {/* ══ PREMIUM DARK BACKGROUND ══ */}
-      <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#001a1b] via-[#003436] to-[#001214]">
-        {/* Ambient glow top-left */}
-        <div className="absolute -top-32 -left-32 w-[500px] h-[500px] bg-[#005E60]/30 rounded-full blur-[120px] pointer-events-none" />
-        {/* Ambient glow bottom-right */}
-        <div className="absolute -bottom-32 -right-32 w-[500px] h-[500px] bg-[#008285]/20 rounded-full blur-[120px] pointer-events-none" />
-        {/* Gold shimmer center */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-[#ffff00]/3 rounded-full blur-[200px] pointer-events-none" />
+      {/* ══ PREMIUM BRIGHT GREEN BACKGROUND ══ */}
+      <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#008285] via-[#005E60] to-[#00383a]">
+        <div className="absolute -top-[500px] -left-[500px] w-[1000px] h-[1000px] bg-white/15 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute -bottom-[500px] -right-[500px] w-[1000px] h-[1000px] bg-[#FFFF00]/15 rounded-full blur-[100px] pointer-events-none" />
       </div>
 
       {/* ══ HEADER ══ */}
-      <header className="relative z-10 shrink-0 bg-white/95 backdrop-blur-xl shadow-2xl border-b-4 border-[#FFFF00] h-[68px] flex items-center">
+      <header className="relative z-10 shrink-0 bg-white shadow-[0_2px_20px_rgb(0,0,0,0.04)] border-b border-gray-100 h-[80px] flex items-center">
         <div className="flex justify-between items-center w-full px-8">
 
           {/* Logo + Title */}
           <div className="flex items-center gap-5">
             <div className="bg-white p-2 rounded-2xl border border-gray-100 flex items-center gap-3 shadow-md">
-              <img
-                alt="BPR Kerta Raharja Logo"
-                className="h-9 w-auto object-contain"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAy_PuUGIg6TcQonvnrv6ChV2tYXRE9vUggKMMgCxgxhRuXOAR7d9HS89fGozDfGiPO7VB1_XILA462zY4-y7rIBw5IZMOMqDS39L2JBtPe3M4wqKYvHrhQ2yz9GDx4h91Ej7rQhMZePA5RMX8EKLGhANiiYcCX4oUDdB8SkCXb1XitQqo69ZO5G5lkJVH12RUQfg4srNQeClopYv2Ike-yRyP-U3N1S4HA842PFSAuFRWGmig0lFIIfXDs2kOdoj01zxU"
-              />
-              <img
-                alt="BPR Logo"
-                className="h-9 w-auto object-contain border-l pl-3 border-gray-200"
-                src="https://lh3.googleusercontent.com/aida/AP1WRLvrPpBEMH26EO7GTocTY_KMD1TjlLHO36PMJh-oekRfNCpqp-fBJ3mM_h0WqzDjutLaXllTzKo4eGOtWKjSQoPXrO2tu-L7gxPmuowrCMXpqaOdRr68BgvdCMdcFjFuTXyZXhPWYwcbY2I4iuPkpIK_4Jvj0DZ5Ywi4Vr_sm5nVcuM3JY3qlEdaASfvVbIbsVhM79lu-tdVFjBk1Wn5xgUSEpVu2LyAsNKSHd2Vcg4e1h5NaS_uOUtOysO2"
-              />
+              <BrandLogo />
             </div>
             <div className="border-l-2 border-gray-200 pl-5">
               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-none mb-0.5">Sistem Informasi Antrean</p>
@@ -270,55 +261,33 @@ export default function DisplayPage() {
               <p className="text-xl font-semibold tracking-wide">Memuat data loket...</p>
             </div>
           ) : (
-            <div
-              className="grid gap-5 h-full"
-              style={{
-                gridTemplateColumns: `repeat(${Math.min(counters.length, 2)}, minmax(0, 1fr))`,
-                gridTemplateRows: counters.length > 2 ? "1fr 1fr" : "1fr",
-              }}
-            >
+            <div className="flex flex-col gap-3 h-full">
               {counters.map((c, index) => {
                 const currentCalling = callingQueues.find((q) => q.counter_name === c.name);
-                const shimmerDelay = `${index * 0.7}s`;
-
+                
                 if (currentCalling) {
-                  // ── ACTIVE CARD ──
+                  // ── ACTIVE HORIZONTAL CARD ──
                   return (
                     <div
                       key={c.name}
-                      className="rounded-[28px] overflow-hidden flex flex-col min-h-0 shadow-2xl border border-white/20"
-                      style={{ boxShadow: "0 0 60px -10px rgba(0,94,96,0.6), 0 25px 50px -12px rgba(0,0,0,0.5)" }}
+                      className="flex-1 min-h-0 bg-white shadow-xl rounded-[20px] flex items-center px-6 overflow-hidden relative border border-gray-100"
                     >
-                      {/* Card header */}
-                      <div className="bg-gradient-to-r from-[#005E60] to-[#007a7c] px-6 py-4 text-center border-b-[6px] border-[#FFFF00] relative overflow-hidden shrink-0">
-                        <div
-                          className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full animate-[shimmer_3.5s_ease-in-out_infinite]"
-                          style={{ animationDelay: shimmerDelay }}
-                        />
-                        <h2 className="text-2xl font-extrabold text-white relative z-10 font-heading tracking-wide drop-shadow-sm">
+                      <div className="absolute left-0 top-0 bottom-0 w-3 bg-[#005E60]" />
+                      
+                      <div className="flex-1 flex items-center pl-4">
+                        <span className="w-4 h-4 rounded-full bg-emerald-500 animate-pulse mr-5 shadow-[0_0_12px_rgba(16,185,129,0.6)]" />
+                        <h2 className="text-3xl lg:text-4xl font-extrabold text-gray-800 font-heading tracking-wide">
                           {c.name}
                         </h2>
                       </div>
-
-                      {/* Card body */}
-                      <div className="flex-grow flex flex-col items-center justify-center bg-white relative overflow-hidden">
-                        {/* Subtle radial glow behind number */}
-                        <div className="absolute inset-0 bg-gradient-to-b from-[#e6f2f2]/60 to-white pointer-events-none" />
-
-                        {/* Status badge */}
-                        <div className="absolute top-4 right-4">
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-500 text-white shadow-lg shadow-emerald-200">
-                            <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-                            Melayani
-                          </span>
-                        </div>
-
-                        <p className="text-[#9aacae] text-[11px] font-extrabold tracking-[0.25em] uppercase mb-3 relative z-10">
-                          Nomor Antrean
-                        </p>
+                      
+                      <div className="flex items-center gap-4 shrink-0 whitespace-nowrap">
+                        <span className="text-gray-400 text-sm font-extrabold tracking-[0.2em] uppercase">
+                          Nomor
+                        </span>
                         <div
-                          className="font-mono font-black text-[#005E60] tracking-tighter leading-none relative z-10"
-                          style={{ fontSize: "clamp(64px, 10vw, 112px)" }}
+                          className="font-mono font-black text-[#005E60] tracking-tighter"
+                          style={{ fontSize: "clamp(30px, min(5vw, 9vh), 80px)", lineHeight: 1.1 }}
                         >
                           {currentCalling.ticket_number}
                         </div>
@@ -326,30 +295,26 @@ export default function DisplayPage() {
                     </div>
                   );
                 } else {
-                  // ── IDLE CARD ──
+                  // ── IDLE HORIZONTAL CARD ──
                   return (
                     <div
                       key={c.name}
-                      className="rounded-[28px] overflow-hidden flex flex-col min-h-0 bg-white/5 backdrop-blur-sm border border-white/10 shadow-xl"
+                      className="flex-1 min-h-0 bg-white/10 backdrop-blur-sm rounded-[20px] border border-white/10 flex items-center px-6"
                     >
-                      {/* Card header kosong */}
-                      <div className="bg-white/10 px-6 py-4 text-center border-b-[6px] border-white/10 shrink-0">
-                        <h2 className="text-2xl font-extrabold text-white/80 font-heading tracking-wide">{c.name}</h2>
+                      <div className="flex-1 flex items-center pl-7 opacity-70">
+                        <span className="w-3 h-3 rounded-full bg-white/20 mr-5" />
+                        <h2 className="text-2xl lg:text-3xl font-extrabold text-white font-heading tracking-wide">
+                          {c.name}
+                        </h2>
                       </div>
-
-                      {/* Card body kosong */}
-                      <div className="flex-grow flex flex-col items-center justify-center relative">
-                        <div className="absolute top-4 right-4">
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-white/10 text-white/40 border border-white/10">
-                            Kosong
-                          </span>
-                        </div>
-                        <p className="text-white/25 text-[11px] font-extrabold tracking-[0.25em] uppercase mb-3">
-                          Nomor Antrean
-                        </p>
+                      
+                      <div className="flex items-center gap-4 opacity-40 shrink-0 whitespace-nowrap">
+                        <span className="text-white text-xs font-bold tracking-[0.2em] uppercase">
+                          Kosong
+                        </span>
                         <div
-                          className="font-mono font-black text-white/15 tracking-tighter leading-none"
-                          style={{ fontSize: "clamp(64px, 10vw, 112px)" }}
+                          className="font-mono font-black text-white tracking-tighter"
+                          style={{ fontSize: "clamp(30px, min(5vw, 9vh), 80px)", lineHeight: 1.1 }}
                         >
                           ---
                         </div>
@@ -363,27 +328,27 @@ export default function DisplayPage() {
         </div>
 
         {/* ── RIGHT: Informasi Publik Panel ── */}
-        <div className="flex-[2] rounded-[28px] overflow-hidden flex flex-col min-h-0 shadow-2xl border border-white/20 bg-white/5 backdrop-blur-sm">
+        <div className="flex-[2] rounded-3xl overflow-hidden flex flex-col min-h-0 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-gray-100 bg-white relative">
 
           {/* Panel header */}
-          <div className="bg-gradient-to-r from-[#005E60] to-[#007a7c] px-6 py-4 flex items-center gap-3 shrink-0 border-b-[6px] border-[#FFFF00]">
-            <div className="w-8 h-8 bg-[#FFFF00]/20 rounded-xl flex items-center justify-center">
-              <ImageIcon className="w-4 h-4 text-[#FFFF00]" />
+          <div className="bg-[#005E60] px-6 py-4 flex items-center gap-4 shrink-0 border-b-4 border-[#FFFF00]">
+            <div className="w-10 h-10 bg-white/10 backdrop-blur-sm rounded-xl flex items-center justify-center">
+              <ImageIcon className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="text-[9px] text-white/50 font-bold uppercase tracking-widest leading-none">Layanan Nasabah</p>
-              <span className="text-white font-extrabold text-sm tracking-wide uppercase leading-tight">Informasi BPR</span>
+              <p className="text-[10px] text-teal-100 font-bold uppercase tracking-widest leading-none mb-1">Layanan Nasabah</p>
+              <span className="text-white font-extrabold text-lg tracking-wide uppercase leading-tight">Informasi BPR</span>
             </div>
           </div>
 
           {/* Slide content */}
           {mediaList.length === 0 ? (
-            <div className="flex-grow flex flex-col items-center justify-center text-white/40 p-8 text-center">
-              <div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mb-5">
-                <ImageIcon className="w-10 h-10" />
+            <div className="flex-grow flex flex-col items-center justify-center text-gray-400 p-8 text-center bg-gray-50">
+              <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mb-5 shadow-sm border border-gray-100">
+                <ImageIcon className="w-10 h-10 text-gray-300" />
               </div>
-              <p className="font-bold text-lg text-white/50">Belum ada informasi publik</p>
-              <p className="text-sm mt-2 text-white/30">Tambahkan gambar atau video di panel petugas</p>
+              <p className="font-bold text-lg text-gray-500">Belum ada informasi publik</p>
+              <p className="text-sm mt-2 text-gray-400">Tambahkan gambar atau video di panel petugas</p>
             </div>
           ) : (
             <div className="flex-grow flex flex-col relative overflow-hidden min-h-0">
@@ -443,25 +408,24 @@ export default function DisplayPage() {
       </main>
 
       {/* ══ MARQUEE FOOTER ══ */}
-      <footer className="relative z-10 shrink-0 h-[62px] flex items-center overflow-hidden border-t-[5px] border-[#FFFF00]"
-        style={{ background: "linear-gradient(90deg, #002a2b 0%, #003d3f 40%, #002a2b 100%)" }}
+      <footer className="relative z-10 shrink-0 h-[62px] flex items-center overflow-hidden border-t border-gray-200 bg-white"
       >
         {/* Label kiri */}
-        <div className="bg-gradient-to-br from-[#005E60] to-[#003436] text-[#FFFF00] font-extrabold text-sm h-full flex items-center px-7 shrink-0 gap-2.5 border-r-2 border-[#FFFF00]/30 min-w-[160px] justify-center tracking-widest uppercase shadow-lg">
-          <Megaphone className="w-4.5 h-4.5 flex-shrink-0" />
+        <div className="bg-gradient-to-r from-[#005E60] to-[#008285] text-white font-extrabold text-sm h-full flex items-center px-7 shrink-0 gap-2.5 border-r-4 border-[#FFFF00] min-w-[160px] justify-center tracking-widest uppercase shadow-md relative z-10">
+          <Megaphone className="w-5 h-5 flex-shrink-0 text-[#FFFF00]" />
           <span>Info BPR</span>
         </div>
 
         {/* Scrolling text */}
-        <div className="overflow-hidden flex-grow h-full flex items-center relative">
-          <div className="animate-marquee whitespace-nowrap inline-flex items-center text-[19px] font-semibold text-white/95 gap-0">
+        <div className="overflow-hidden flex-grow h-full flex items-center relative bg-gray-50/50">
+          <div className="animate-marquee whitespace-nowrap inline-flex items-center text-[19px] font-semibold text-gray-700 gap-0">
             {biRate && (
               <>
-                <span className="mx-10 text-[#FFFF00]/80 text-lg">◆</span>
+                <span className="mx-10 text-[#005E60]/30 text-lg">◆</span>
                 <span className="inline-flex items-center gap-3">
-                  <span className="bg-[#FFFF00] text-[#003436] font-black text-[11px] px-3 py-0.5 rounded-full uppercase tracking-widest">BI Rate</span>
-                  <span className="font-extrabold text-[#FFFF00]">{biRate.bi_rate_str}</span>
-                  <span className="text-white/50 text-base">per {biRate.period}</span>
+                  <span className="bg-[#005E60] text-white font-black text-[11px] px-3 py-0.5 rounded-full uppercase tracking-widest">BI Rate</span>
+                  <span className="font-extrabold text-[#005E60]">{biRate.bi_rate_str}</span>
+                  <span className="text-gray-400 text-base">per {biRate.period}</span>
                 </span>
               </>
             )}
@@ -470,18 +434,18 @@ export default function DisplayPage() {
               "Budayakan mengantre demi ketertiban bersama di lingkungan Bank.",
             ]).map((text, idx) => (
               <span key={idx} className="inline-flex items-center">
-                <span className="mx-10 text-[#FFFF00]/80 text-lg">◆</span>
+                <span className="mx-10 text-[#005E60]/30 text-lg">◆</span>
                 {text}
               </span>
             ))}
             {/* Seamless loop duplicate */}
             {biRate && (
               <>
-                <span className="mx-10 text-[#FFFF00]/80 text-lg">◆</span>
+                <span className="mx-10 text-[#005E60]/30 text-lg">◆</span>
                 <span className="inline-flex items-center gap-3">
-                  <span className="bg-[#FFFF00] text-[#003436] font-black text-[11px] px-3 py-0.5 rounded-full uppercase tracking-widest">BI Rate</span>
-                  <span className="font-extrabold text-[#FFFF00]">{biRate.bi_rate_str}</span>
-                  <span className="text-white/50 text-base">per {biRate.period}</span>
+                  <span className="bg-[#005E60] text-white font-black text-[11px] px-3 py-0.5 rounded-full uppercase tracking-widest">BI Rate</span>
+                  <span className="font-extrabold text-[#005E60]">{biRate.bi_rate_str}</span>
+                  <span className="text-gray-400 text-base">per {biRate.period}</span>
                 </span>
               </>
             )}
@@ -490,7 +454,7 @@ export default function DisplayPage() {
               "Budayakan mengantre demi ketertiban bersama di lingkungan Bank.",
             ]).map((text, idx) => (
               <span key={`d-${idx}`} className="inline-flex items-center">
-                <span className="mx-10 text-[#FFFF00]/80 text-lg">◆</span>
+                <span className="mx-10 text-[#005E60]/30 text-lg">◆</span>
                 {text}
               </span>
             ))}
